@@ -1,1 +1,1 @@
-import '@testing-library/react-native/extend-expect';
+require('@testing-library/react-native/matchers');

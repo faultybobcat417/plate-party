@@ -8,7 +8,6 @@ import {
   type NaPolicy,
   type NewWager,
   type OracleType,
-  partyMembers,
   type Uuid,
   wagers,
   type Wager,
