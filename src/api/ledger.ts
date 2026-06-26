@@ -1,4 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getDb } from "../db/connection";
+import { ledgerEntries } from "../db/schema";
 
 export interface LedgerTransaction {
   id: string;
@@ -16,7 +18,6 @@ export interface LedgerTransaction {
   wagerId: string | null;
   transactionId: string;
   memo: string | null;
-  // Additional fields for compatibility
   balanceAfter?: number;
   status?: string;
   metadata?: string | null;
@@ -64,15 +65,67 @@ export async function postLedgerTransaction(data: LedgerTransactionInput, _execu
     updatedAt: now,
     deletedAt: null,
     hlc: Date.now().toString(),
-    lastModifiedByDeviceId: null,
-    partyId: data.userId || 'anonymous',
-    wagerId: null,
-    transactionId: Date.now().toString(),
-    memo: null,
+    lastModifiedByDeviceId: data.deviceId || null,
+    partyId: data.partyId || 'anonymous',
+    wagerId: data.wagerId ?? null,
+    transactionId: data.transactionId || Date.now().toString(),
+    memo: data.description || null,
     balanceAfter: 0,
     status: 'completed',
     metadata: null,
   };
+
+  // ── NEW: Also write to SQLite ledger_entries ──
+  try {
+    const db = await getDb();
+    if (data.entries && data.entries.length > 0) {
+      for (const entry of data.entries) {
+        await db.insert(ledgerEntries).values({
+          transactionId: tx.transactionId,
+          partyId: data.partyId || 'anonymous',
+          wagerId: data.wagerId ?? null,
+          betId: data.betId ?? null,
+          poolTransactionId: null,
+          iouId: null,
+          sourceTable: (data.sourceTable as any) || 'manual_adjustments',
+          sourceId: data.sourceId || tx.transactionId,
+          accountType: entry.accountType as any,
+          accountId: entry.accountId,
+          plateDelta: entry.plateDelta,
+          memo: entry.memo || data.description || null,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+          hlc: now,
+          lastModifiedByDeviceId: data.deviceId || null,
+        });
+      }
+    } else {
+      await db.insert(ledgerEntries).values({
+        transactionId: tx.transactionId,
+        partyId: data.partyId || 'anonymous',
+        wagerId: data.wagerId ?? null,
+        betId: data.betId ?? null,
+        poolTransactionId: null,
+        iouId: null,
+        sourceTable: (data.sourceTable as any) || 'manual_adjustments',
+        sourceId: data.sourceId || tx.transactionId,
+        accountType: (data.type as any) || 'member_available',
+        accountId: data.userId || 'anonymous',
+        plateDelta: data.amount ?? 0,
+        memo: data.description || null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        hlc: now,
+        lastModifiedByDeviceId: data.deviceId || null,
+      });
+    }
+  } catch (err) {
+    console.error('[Ledger] SQLite write failed:', err);
+  }
+
+  // ── Keep AsyncStorage for backward compatibility ──
   const existing = await AsyncStorage.getItem('ledger_transactions');
   const transactions = existing ? JSON.parse(existing) : [];
   transactions.push(tx);
