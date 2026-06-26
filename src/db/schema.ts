@@ -71,6 +71,12 @@ export const ledgerSourceTables = [
 ] as const;
 export type LedgerSourceTable = (typeof ledgerSourceTables)[number];
 
+export const challengeTypes = ["self", "bounty", "group"] as const;
+export type ChallengeType = (typeof challengeTypes)[number];
+
+export const challengeStatuses = ["open", "claimed", "completed", "expired"] as const;
+export type ChallengeStatus = (typeof challengeStatuses)[number];
+
 export const syncTableNames = [
   "users",
   "parties",
@@ -81,6 +87,12 @@ export const syncTableNames = [
   "pool_transactions",
   "ious",
   "ledger_entries",
+  "challenges",
+  "meat_posts",
+  "meat_interactions",
+  "stake_posts",
+  "stake_entries",
+  "game_records",
 ] as const;
 export type SyncTableName = (typeof syncTableNames)[number];
 
@@ -95,6 +107,15 @@ export const syncOutboxStatuses = [
   "conflicted",
 ] as const;
 export type SyncOutboxStatus = (typeof syncOutboxStatuses)[number];
+
+export const meatPostStatuses = ["active", "paused", "expired"] as const;
+export type MeatPostStatus = (typeof meatPostStatuses)[number];
+
+export const meatInteractionTypes = ["like", "comment", "dm"] as const;
+export type MeatInteractionType = (typeof meatInteractionTypes)[number];
+
+export const stakePostStatuses = ["open", "locked", "resolved", "cancelled"] as const;
+export type StakePostStatus = (typeof stakePostStatuses)[number];
 
 const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 
@@ -382,6 +403,7 @@ export const bets = sqliteTable(
     index("bets_user_id_idx").on(table.userId),
     index("bets_option_id_idx").on(table.optionId),
     index("bets_placed_at_idx").on(table.placedAt),
+    index("bets_wager_user_idx").on(table.wagerId, table.userId),
     check("bets_status_check", sql`${table.status} in ('pending', 'locked', 'won', 'lost', 'void')`),
     check("bets_plates_wagered_positive", sql`${table.platesWagered} > 0`),
     check(
@@ -464,6 +486,7 @@ export const ious = sqliteTable(
     index("ious_from_user_id_idx").on(table.fromUserId),
     index("ious_to_user_id_idx").on(table.toUserId),
     index("ious_wager_id_idx").on(table.wagerId),
+    index("ious_from_to_idx").on(table.fromUserId, table.toUserId),
     check("ious_dollar_amount_cents_positive", sql`${table.dollarAmountCents} > 0`),
     check("ious_distinct_users_check", sql`${table.fromUserId} <> ${table.toUserId}`),
     check(
@@ -511,6 +534,7 @@ export const ledgerEntries = sqliteTable(
     index("ledger_entries_transaction_id_idx").on(table.transactionId),
     index("ledger_entries_source_idx").on(table.sourceTable, table.sourceId),
     index("ledger_entries_account_idx").on(table.accountType, table.accountId),
+    index("ledger_entries_party_account_idx").on(table.partyId, table.accountType, table.accountId),
     uniqueIndex("ledger_entries_source_account_unique").on(
       table.sourceTable,
       table.sourceId,
@@ -527,6 +551,35 @@ export const ledgerEntries = sqliteTable(
       sql`${table.sourceTable} in ('bets', 'pool_transactions', 'ious', 'manual_adjustments')`,
     ),
   ],
+);
+
+export const challenges = sqliteTable(
+  "challenges",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    type: text("type", { enum: challengeTypes }).notNull(),
+    rewardPlates: integer("reward_plates").notNull(),
+    deadline: text("deadline").$type<IsoTimestamp>().notNull(),
+    status: text("status", { enum: challengeStatuses }).notNull().default("open"),
+    creatorId: text("creator_id").$type<Uuid>().notNull(),
+    completerId: text("completer_id").$type<Uuid>(),
+    proofImageUrl: text("proof_image_url"),
+    proofNote: text("proof_note"),
+    claimedAt: text("claimed_at").$type<IsoTimestamp>(),
+    completedAt: text("completed_at").$type<IsoTimestamp>(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("challenges_status_idx").on(table.status),
+    index("challenges_creator_idx").on(table.creatorId),
+    index("challenges_deadline_idx").on(table.deadline),
+  ]
 );
 
 export const syncOutbox = sqliteTable(
@@ -552,9 +605,10 @@ export const syncOutbox = sqliteTable(
     index("sync_outbox_status_created_at_idx").on(table.status, table.createdAt),
     index("sync_outbox_table_record_idx").on(table.tableName, table.recordId),
     index("sync_outbox_device_status_idx").on(table.deviceId, table.status),
+    index("sync_outbox_hlc_status_idx").on(table.hlc, table.status),
     check(
       "sync_outbox_table_name_check",
-      sql`${table.tableName} in ('users', 'parties', 'party_members', 'wagers', 'wager_options', 'bets', 'pool_transactions', 'ious', 'ledger_entries')`,
+      sql`${table.tableName} in ('users', 'parties', 'party_members', 'wagers', 'wager_options', 'bets', 'pool_transactions', 'ious', 'ledger_entries', 'challenges', 'meat_posts', 'meat_interactions', 'stake_posts', 'stake_entries')`,
     ),
     check(
       "sync_outbox_operation_check",
@@ -568,6 +622,95 @@ export const syncOutbox = sqliteTable(
   ],
 );
 
+export const meatPosts = sqliteTable(
+  "meat_posts",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    creatorId: text("creator_id").$type<Uuid>().notNull(),
+    caption: text("caption").notNull(),
+    bioSnippet: text("bio_snippet"),
+    plateCost: integer("plate_cost").notNull(),
+    imageUrl: text("image_url"),
+    likes: integer("likes").notNull().default(0),
+    comments: integer("comments").notNull().default(0),
+    status: text("status", { enum: meatPostStatuses }).notNull().default("active"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("meat_posts_creator_idx").on(table.creatorId),
+    index("meat_posts_status_idx").on(table.status),
+    index("meat_posts_created_at_idx").on(table.createdAt),
+  ]
+);
+
+export const meatInteractions = sqliteTable(
+  "meat_interactions",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    postId: text("post_id").$type<Uuid>().notNull(),
+    userId: text("user_id").$type<Uuid>().notNull(),
+    interactionType: text("interaction_type", { enum: meatInteractionTypes }).notNull(),
+    platesPaid: integer("plates_paid").notNull(),
+    commentText: text("comment_text"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("meat_interactions_post_idx").on(table.postId),
+    index("meat_interactions_user_idx").on(table.userId),
+  ]
+);
+
+export const stakePosts = sqliteTable(
+  "stake_posts",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    creatorId: text("creator_id").$type<Uuid>().notNull(),
+    content: text("content").notNull(),
+    targetPlates: integer("target_plates").notNull(),
+    totalStaked: integer("total_staked").notNull().default(0),
+    participantCount: integer("participant_count").notNull().default(0),
+    deadline: text("deadline").$type<IsoTimestamp>().notNull(),
+    status: text("status", { enum: stakePostStatuses }).notNull().default("open"),
+    optionsJson: text("options_json", { mode: "json" }).$type<{ label: string; staked: number }[]>().notNull(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("stake_posts_creator_idx").on(table.creatorId),
+    index("stake_posts_status_idx").on(table.status),
+    index("stake_posts_deadline_idx").on(table.deadline),
+  ]
+);
+
+export const stakeEntries = sqliteTable(
+  "stake_entries",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    postId: text("post_id").$type<Uuid>().notNull(),
+    userId: text("user_id").$type<Uuid>().notNull(),
+    optionIndex: integer("option_index").notNull(),
+    platesStaked: integer("plates_staked").notNull(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("stake_entries_post_idx").on(table.postId),
+    index("stake_entries_user_idx").on(table.userId),
+  ]
+);
+
+// ─── EXISTING RELATIONS ─────────────────────────────────────────────────
+
 export const usersRelations = relations(users, ({ many }) => ({
   createdParties: many(parties, { relationName: "party_creator" }),
   memberships: many(partyMembers),
@@ -576,6 +719,13 @@ export const usersRelations = relations(users, ({ many }) => ({
   poolTransactions: many(poolTransactions),
   iousOwed: many(ious, { relationName: "iou_from_user" }),
   iousReceivable: many(ious, { relationName: "iou_to_user" }),
+  // NEW: Added by AGENT 1
+  challengesCreated: many(challenges, { relationName: "challenge_creator" }),
+  challengesCompleted: many(challenges, { relationName: "challenge_completer" }),
+  meatPosts: many(meatPosts),
+  meatInteractions: many(meatInteractions),
+  stakePosts: many(stakePosts),
+  stakeEntries: many(stakeEntries),
 }));
 
 export const partiesRelations = relations(parties, ({ one, many }) => ({
@@ -707,6 +857,61 @@ export const ledgerEntriesRelations = relations(ledgerEntries, ({ one }) => ({
   }),
 }));
 
+// ─── NEW RELATIONS (Added by AGENT 1) ───────────────────────────────────
+
+export const challengesRelations = relations(challenges, ({ one }) => ({
+  creator: one(users, {
+    fields: [challenges.creatorId],
+    references: [users.id],
+    relationName: "challenge_creator",
+  }),
+  completer: one(users, {
+    fields: [challenges.completerId],
+    references: [users.id],
+    relationName: "challenge_completer",
+  }),
+}));
+
+export const meatPostsRelations = relations(meatPosts, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [meatPosts.creatorId],
+    references: [users.id],
+  }),
+  interactions: many(meatInteractions),
+}));
+
+export const meatInteractionsRelations = relations(meatInteractions, ({ one }) => ({
+  post: one(meatPosts, {
+    fields: [meatInteractions.postId],
+    references: [meatPosts.id],
+  }),
+  user: one(users, {
+    fields: [meatInteractions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const stakePostsRelations = relations(stakePosts, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [stakePosts.creatorId],
+    references: [users.id],
+  }),
+  entries: many(stakeEntries),
+}));
+
+export const stakeEntriesRelations = relations(stakeEntries, ({ one }) => ({
+  post: one(stakePosts, {
+    fields: [stakeEntries.postId],
+    references: [stakePosts.id],
+  }),
+  user: one(users, {
+    fields: [stakeEntries.userId],
+    references: [users.id],
+  }),
+}));
+
+// ─── EXPORTS ─────────────────────────────────────────────────────────────
+
 export const schema = {
   users,
   parties,
@@ -727,6 +932,17 @@ export const schema = {
   poolTransactionsRelations,
   iousRelations,
   ledgerEntriesRelations,
+  // NEW: Added by AGENT 1
+  challenges,
+  meatPosts,
+  meatInteractions,
+  stakePosts,
+  stakeEntries,
+  challengesRelations,
+  meatPostsRelations,
+  meatInteractionsRelations,
+  stakePostsRelations,
+  stakeEntriesRelations,
 };
 
 export type User = typeof users.$inferSelect;
@@ -749,3 +965,13 @@ export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type NewLedgerEntry = typeof ledgerEntries.$inferInsert;
 export type SyncOutboxEntry = typeof syncOutbox.$inferSelect;
 export type NewSyncOutboxEntry = typeof syncOutbox.$inferInsert;
+export type Challenge = typeof challenges.$inferSelect;
+export type NewChallenge = typeof challenges.$inferInsert;
+export type MeatPost = typeof meatPosts.$inferSelect;
+export type NewMeatPost = typeof meatPosts.$inferInsert;
+export type MeatInteraction = typeof meatInteractions.$inferSelect;
+export type NewMeatInteraction = typeof meatInteractions.$inferInsert;
+export type StakePost = typeof stakePosts.$inferSelect;
+export type NewStakePost = typeof stakePosts.$inferInsert;
+export type StakeEntry = typeof stakeEntries.$inferSelect;
+export type NewStakeEntry = typeof stakeEntries.$inferInsert;

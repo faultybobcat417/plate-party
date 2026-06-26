@@ -1,44 +1,92 @@
-import { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from "react-native-reanimated";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { Button } from "../../components/primitives/Button";
 import { colors, spacing, typography } from "../../theme";
+import { loadProfile } from "../../utils/profileStorage";
 import type { RootStackParamList } from "../../navigation/types";
 
-export type SplashScreenProps = NativeStackScreenProps<RootStackParamList, "Splash">;
+export type SplashScreenProps = NativeStackScreenProps<
+  RootStackParamList,
+  "Splash"
+>;
 
 export function SplashScreen({ navigation }: SplashScreenProps) {
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(24);
+  const [isReady, setIsReady] = useState(false);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(24)).current;
 
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: 900 });
-    translateY.value = withTiming(0, { duration: 900 });
-  }, [opacity, translateY]);
+    let mounted = true;
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
+    async function bootstrap() {
+      const profile = await loadProfile();
+      if (!mounted) return;
+
+      if (profile && profile.displayName.trim()) {
+        navigation.replace("Main");
+        return;
+      }
+
+      setIsReady(true);
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    void bootstrap();
+
+    return () => {
+      mounted = false;
+      opacity.stopAnimation();
+      translateY.stopAnimation();
+    };
+  }, [navigation, opacity, translateY]);
+
+  if (!isReady) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.glaze[600]} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <Animated.View style={[styles.content, animatedStyle]}>
+      <Animated.View
+        style={[
+          styles.content,
+          { opacity, transform: [{ translateY }] },
+        ]}
+      >
         <Text style={styles.logo}>🍽</Text>
         <Text style={styles.title}>Plate Party</Text>
-        <Text style={styles.subtitle}>Friendly wagers. Charitable outcomes.</Text>
+        <Text style={styles.subtitle}>
+          Friendly wagers. Charitable outcomes.
+        </Text>
       </Animated.View>
       <View style={styles.footer}>
         <Button
           title="Get Started"
           size="lg"
+          accessibilityLabel="Get started"
           onPress={() => navigation.replace("Onboarding")}
         />
       </View>
@@ -50,6 +98,10 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.linen[100],
     flex: 1,
+  },
+  centered: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   content: {
     alignItems: "center",

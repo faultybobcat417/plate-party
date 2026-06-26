@@ -6,17 +6,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { ActivityFeedItem } from "../../components/composite/ActivityFeedItem";
 import { EmptyState } from "../../components/composite/EmptyState";
-import type { PartyStackParamList } from "../../navigation/types";
 import { useLedgerStore } from "../../stores/useLedgerStore";
-import { usePartyStore } from "../../stores/usePartyStore";
 import { colors, spacing, typography } from "../../theme";
 import type { LedgerSourceTable } from "../../db/schema";
-
-type Props = NativeStackScreenProps<PartyStackParamList, "Activity">;
 
 const sourceToType = (sourceTable: LedgerSourceTable): "wager" | "pool" | "iou" | "bet" => {
   switch (sourceTable) {
@@ -32,45 +27,29 @@ const sourceToType = (sourceTable: LedgerSourceTable): "wager" | "pool" | "iou" 
   }
 };
 
-export function ActivityScreen({ navigation }: Props) {
-  const currentParty = usePartyStore((state) => state.currentParty);
-  const entries = useLedgerStore((state) => state.entries);
-  const loadLedgerEntriesForParty = useLedgerStore((state) => state.loadLedgerEntriesForParty);
-  const isLoading = useLedgerStore((state) => state.isLoading);
+export function ActivityScreen() {
+  const { entries, loadAllEntries } = useLedgerStore();
 
   useEffect(() => {
-    if (currentParty) {
-      void loadLedgerEntriesForParty(currentParty.id);
-    }
-  }, [currentParty, loadLedgerEntriesForParty]);
-
-  const sortedEntries = [...entries].reverse();
+    void loadAllEntries();
+  }, [loadAllEntries]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.title}>Activity</Text>
+        <Text style={styles.subtitle}>Your recent moves</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {!currentParty ? (
-          <EmptyState
-            icon="🍽"
-            title="No party selected"
-            message="Join or create a party to see activity."
-            actionLabel="Find a Party"
-            onAction={() => navigation.navigate("PartyList")}
-          />
-        ) : isLoading && sortedEntries.length === 0 ? (
-          <Text style={styles.loadingText}>Loading activity...</Text>
-        ) : sortedEntries.length === 0 ? (
-          <EmptyState
-            icon="🍽"
-            title="No activity yet"
-            message="Bets, wagers, and pool transfers will appear here."
-          />
-        ) : (
-          sortedEntries.map((entry) => (
+      {entries.length === 0 ? (
+        <EmptyState
+          icon="🍽"
+          title="No activity yet"
+          message="Join a party and start betting to see activity here."
+        />
+      ) : (
+        <ScrollView contentContainerStyle={styles.list}>
+          {entries.map((entry) => (
             <ActivityFeedItem
               key={entry.id}
               title={entry.memo || `${entry.sourceTable.replace(/_/g, " ")}`}
@@ -79,9 +58,9 @@ export function ActivityScreen({ navigation }: Props) {
               amount={entry.plateDelta}
               type={sourceToType(entry.sourceTable)}
             />
-          ))
-        )}
-      </ScrollView>
+          ))}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -94,18 +73,20 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing[4],
     paddingTop: spacing[4],
+    paddingBottom: spacing[2],
   },
   title: {
     color: colors.ink[900],
     fontSize: typography.sizes["2xl"],
     fontWeight: typography.weights.bold,
   },
-  scroll: {
-    padding: spacing[4],
+  subtitle: {
+    color: colors.ash[500],
+    fontSize: typography.sizes.sm,
+    marginTop: spacing[1],
   },
-  loadingText: {
-    color: colors.ash[600],
-    fontSize: typography.sizes.base,
-    textAlign: "center",
+  list: {
+    padding: spacing[4],
+    gap: spacing[3],
   },
 });

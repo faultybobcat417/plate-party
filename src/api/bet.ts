@@ -1,95 +1,85 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { getDb, openSQLiteDatabase } from "../db/connection";
-import {
-  applyMemberPlateDelta,
-  assertMemberCanSpend,
-  postLedgerTransfer,
-} from "./ledger";
-import { enqueueMutation } from "./sync";
 import {
   bets,
   createDefaultHlc,
   createUuid,
-  type Bet,
-  type JsonObject,
+  partyMembers,
   type Uuid,
+  wagerOptions,
+  wagers,
 } from "../db/schema";
+import { postLedgerTransaction } from "./ledger";
+import { enqueueMutation } from "./sync";
 
 export type PlaceBetInput = {
   wagerId: Uuid;
-  userId: Uuid;
   optionId: Uuid;
+  userId: Uuid;
+  partyId: Uuid;
+  plates: number;
+  realMoneyAmountCents?: number | null;
   deviceId: string;
 };
 
-export type BetWithUser = Bet & {
-  displayName: string;
-  avatarColor: string;
+export type PlaceBetResult = {
+  betId: Uuid;
+  transactionId: Uuid;
 };
 
-export type BetWithWager = Bet & {
-  question: string;
-  partyId: Uuid;
+export type CancelBetInput = {
+  betId: Uuid;
+  userId: Uuid;
+  deviceId: string;
 };
 
-type BetRow = {
-  id: string;
-  wager_id: string;
-  user_id: string;
-  option_id: string;
-  plates_wagered: number;
-  real_money_amount_cents: number | null;
-  placed_at: string;
-  locked_at: string | null;
-  resolved_at: string | null;
-  status: Bet["status"];
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
+export type CancelBetResult = {
+  refunded: boolean;
+  platesRefunded: number;
+};
+
+export type BetWithDetails = {
+  id: Uuid;
+  wagerId: Uuid;
+  userId: Uuid;
+  optionId: Uuid;
+  platesWagered: number;
+  realMoneyAmountCents: number | null;
+  placedAt: string;
+  lockedAt: string | null;
+  resolvedAt: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
   hlc: string;
-  last_modified_by_device_id: string | null;
-  display_name: string;
-  avatar_color: string;
+  lastModifiedByDeviceId: string | null;
+  userDisplayName: string;
+  optionLabel: string;
+  displayName?: string;
 };
 
-type BetWithWagerRow = {
-  id: string;
-  wager_id: string;
-  user_id: string;
-  option_id: string;
-  plates_wagered: number;
-  real_money_amount_cents: number | null;
-  placed_at: string;
-  locked_at: string | null;
-  resolved_at: string | null;
-  status: Bet["status"];
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
+export type UserBetWithDetails = {
+  id: Uuid;
+  wagerId: Uuid;
+  userId: Uuid;
+  optionId: Uuid;
+  platesWagered: number;
+  realMoneyAmountCents: number | null;
+  placedAt: string;
+  lockedAt: string | null;
+  resolvedAt: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
   hlc: string;
-  last_modified_by_device_id: string | null;
-  question: string;
-  party_id: string;
+  lastModifiedByDeviceId: string | null;
+  wagerQuestion: string;
+  partyName: string;
+  optionLabel: string;
 };
-
-const betSelectColumns = `
-  b.id,
-  b.wager_id as wagerId,
-  b.user_id as userId,
-  b.option_id as optionId,
-  b.plates_wagered as platesWagered,
-  b.real_money_amount_cents as realMoneyAmountCents,
-  b.placed_at as placedAt,
-  b.locked_at as lockedAt,
-  b.resolved_at as resolvedAt,
-  b.status,
-  b.created_at as createdAt,
-  b.updated_at as updatedAt,
-  b.deleted_at as deletedAt,
-  b.hlc,
-  b.last_modified_by_device_id as lastModifiedByDeviceId
-`;
 
 export class BetApiError extends Error {
   public readonly cause: unknown;
@@ -105,364 +95,331 @@ const toBetApiError = (message: string, error: unknown): BetApiError => {
   if (error instanceof BetApiError) {
     return error;
   }
-
   return new BetApiError(message, error);
 };
 
 const now = (): string => new Date().toISOString();
 
-const betToPayload = (bet: Bet): JsonObject => ({
-  id: bet.id,
-  wagerId: bet.wagerId,
-  userId: bet.userId,
-  optionId: bet.optionId,
-  platesWagered: bet.platesWagered,
-  realMoneyAmountCents: bet.realMoneyAmountCents,
-  placedAt: bet.placedAt,
-  lockedAt: bet.lockedAt,
-  resolvedAt: bet.resolvedAt,
-  status: bet.status,
-  createdAt: bet.createdAt,
-  updatedAt: bet.updatedAt,
-  deletedAt: bet.deletedAt,
-  hlc: bet.hlc,
-  lastModifiedByDeviceId: bet.lastModifiedByDeviceId,
-});
-
-const rowToBetWithUser = (row: BetRow): BetWithUser => ({
-  id: row.id,
-  wagerId: row.wager_id,
-  userId: row.user_id,
-  optionId: row.option_id,
-  platesWagered: row.plates_wagered,
-  realMoneyAmountCents: row.real_money_amount_cents,
-  placedAt: row.placed_at,
-  lockedAt: row.locked_at,
-  resolvedAt: row.resolved_at,
-  status: row.status,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-  deletedAt: row.deleted_at,
-  hlc: row.hlc,
-  lastModifiedByDeviceId: row.last_modified_by_device_id,
-  displayName: row.display_name,
-  avatarColor: row.avatar_color,
-});
-
-const rowToBetWithWager = (row: BetWithWagerRow): BetWithWager => ({
-  id: row.id,
-  wagerId: row.wager_id,
-  userId: row.user_id,
-  optionId: row.option_id,
-  platesWagered: row.plates_wagered,
-  realMoneyAmountCents: row.real_money_amount_cents,
-  placedAt: row.placed_at,
-  lockedAt: row.locked_at,
-  resolvedAt: row.resolved_at,
-  status: row.status,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-  deletedAt: row.deleted_at,
-  hlc: row.hlc,
-  lastModifiedByDeviceId: row.last_modified_by_device_id,
-  question: row.question,
-  partyId: row.party_id,
-});
-
-export const validateBalance = async (
-  partyId: Uuid,
-  userId: Uuid,
-  plateAmount: number,
-): Promise<void> => {
+export const placeBet = async (input: PlaceBetInput): Promise<PlaceBetResult> => {
   try {
-    await assertMemberCanSpend(partyId, userId, plateAmount);
-  } catch (error) {
-    throw toBetApiError("Failed to validate plate balance.", error);
-  }
-};
-
-export const placeBet = async (input: PlaceBetInput): Promise<Bet> => {
-  try {
-    const database = await openSQLiteDatabase();
-    const timestamp = now();
-    const betId = createUuid();
-    const betHlc = createDefaultHlc();
-    let bet: Bet | null = null;
-
-    await database.withExclusiveTransactionAsync(async (transaction) => {
-      try {
-        const wager = await transaction.getFirstAsync<{
-          id: string;
-          party_id: string;
-          stake_plates: number;
-          status: "open" | "locked" | "resolved" | "void";
-        }>(
-          `select id, party_id, stake_plates, status
-           from wagers
-           where id = ? and deleted_at is null
-           limit 1`,
-          input.wagerId,
-        );
-
-        if (!wager) {
-          throw new BetApiError("Wager not found.");
-        }
-
-        if (wager.status !== "open") {
-          throw new BetApiError("Wager is not open for betting.");
-        }
-
-        const option = await transaction.getFirstAsync<{ id: string }>(
-          `select id from wager_options
-           where id = ? and wager_id = ? and deleted_at is null
-           limit 1`,
-          [input.optionId, input.wagerId],
-        );
-
-        if (!option) {
-          throw new BetApiError("Wager option does not belong to this wager.");
-        }
-
-        const existingBet = await transaction.getFirstAsync<{ id: string }>(
-          `select id from bets
-           where wager_id = ? and user_id = ? and deleted_at is null
-           limit 1`,
-          [input.wagerId, input.userId],
-        );
-
-        if (existingBet) {
-          throw new BetApiError("User has already placed a bet on this wager.");
-        }
-
-        await assertMemberCanSpend(wager.party_id, input.userId, wager.stake_plates, transaction);
-
-        await transaction.runAsync(
-          `insert into bets (
-            id,
-            wager_id,
-            user_id,
-            option_id,
-            plates_wagered,
-            real_money_amount_cents,
-            placed_at,
-            status,
-            created_at,
-            updated_at,
-            hlc,
-            last_modified_by_device_id
-          ) values (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
-          [
-            betId,
-            input.wagerId,
-            input.userId,
-            input.optionId,
-            wager.stake_plates,
-            null,
-            timestamp,
-            timestamp,
-            timestamp,
-            betHlc,
-            input.deviceId,
-          ],
-        );
-
-        await postLedgerTransfer(
-          {
-            partyId: wager.party_id,
-            sourceTable: "bets",
-            sourceId: betId,
-            wagerId: input.wagerId,
-            betId,
-            deviceId: input.deviceId,
-            from: {
-              accountType: "member_available",
-              accountId: input.userId,
-              memo: `Bet placed on wager ${input.wagerId}`,
-            },
-            to: {
-              accountType: "wager_escrow",
-              accountId: input.wagerId,
-              memo: `Bet placed on wager ${input.wagerId}`,
-            },
-            plateAmount: wager.stake_plates,
-          },
-          transaction,
-        );
-
-        await applyMemberPlateDelta(
-          wager.party_id,
-          input.userId,
-          -wager.stake_plates,
-          transaction,
-        );
-
-        await transaction.runAsync(
-          `update party_members
-           set total_plates_wagered = total_plates_wagered + ?,
-               updated_at = ?,
-               hlc = ?
-           where party_id = ? and user_id = ?`,
-          [wager.stake_plates, timestamp, createDefaultHlc(), wager.party_id, input.userId],
-        );
-
-        bet = await transaction.getFirstAsync<Bet>(
-          `select ${betSelectColumns} from bets b where b.id = ?`,
-          betId,
-        );
-
-        if (!bet) {
-          throw new BetApiError("Bet insert succeeded but could not be read.");
-        }
-
-        await enqueueMutation(
-          {
-            tableName: "bets",
-            recordId: betId,
-            operation: "insert",
-            payload: betToPayload(bet),
-            deviceId: input.deviceId,
-            hlc: betHlc,
-          },
-          transaction,
-        );
-      } catch (error) {
-        throw toBetApiError("Failed during bet placement transaction.", error);
-      }
-    });
-
-    if (!bet) {
-      throw new BetApiError("Bet placement did not produce a bet.");
+    if (input.plates <= 0) {
+      throw new BetApiError("Plate amount must be greater than 0.");
     }
 
-    return bet;
+    const database = await openSQLiteDatabase();
+    const betId = createUuid();
+    const transactionId = createUuid();
+    const timestamp = now();
+    const betHlc = createDefaultHlc();
+
+    await database.withExclusiveTransactionAsync(async (transaction) => {
+      // 1. Validate wager is open and deadline not passed
+      const wagerRow = await transaction.getFirstAsync<{
+        id: string;
+        party_id: string;
+        deadline: string;
+        status: string;
+      }>(
+        "select id, party_id, deadline, status from wagers where id = ? and deleted_at is null",
+        input.wagerId,
+      );
+
+      if (!wagerRow) {
+        throw new BetApiError("Wager not found.");
+      }
+
+      if (wagerRow.status !== "open") {
+        throw new BetApiError(`Wager status is ${wagerRow.status}, expected 'open'.`);
+      }
+
+      if (new Date(wagerRow.deadline) <= new Date()) {
+        throw new BetApiError("Wager deadline has passed.");
+      }
+
+      if (wagerRow.party_id !== input.partyId) {
+        throw new BetApiError("Wager does not belong to party.");
+      }
+
+      // 2. Validate option belongs to wager
+      const optionRow = await transaction.getFirstAsync<{ id: string }>(
+        "select id from wager_options where id = ? and wager_id = ? and deleted_at is null",
+        [input.optionId, input.wagerId],
+      );
+      if (!optionRow) {
+        throw new BetApiError("Option does not belong to this wager.");
+      }
+
+      // 3. Validate user is active member
+      const memberRow = await transaction.getFirstAsync<{
+        plate_balance: number;
+        reserved_plate_balance: number;
+      }>(
+        "select plate_balance, reserved_plate_balance from party_members where party_id = ? and user_id = ? and deleted_at is null and left_at is null",
+        [input.partyId, input.userId],
+      );
+      if (!memberRow) {
+        throw new BetApiError("User is not an active member of this party.");
+      }
+
+      // 4. Validate no duplicate bet
+      const existingBet = await transaction.getFirstAsync<{ id: string }>(
+        "select id from bets where wager_id = ? and user_id = ? and deleted_at is null",
+        [input.wagerId, input.userId],
+      );
+      if (existingBet) {
+        throw new BetApiError("User already has a bet on this wager.");
+      }
+
+      // 5. Validate sufficient balance
+      const availableBalance = memberRow.plate_balance - memberRow.reserved_plate_balance;
+      if (availableBalance < input.plates) {
+        throw new BetApiError(
+          `Insufficient plate balance. Available: ${availableBalance}, Required: ${input.plates}`,
+        );
+      }
+
+      // 6. Post ledger transaction: member_available -> wager_escrow
+      await postLedgerTransaction(
+        {
+          partyId: input.partyId,
+          sourceTable: "bets",
+          sourceId: betId,
+          transactionId,
+          deviceId: input.deviceId,
+          wagerId: input.wagerId,
+          entries: [
+            {
+              accountType: "member_available",
+              accountId: input.userId,
+              plateDelta: -input.plates,
+              memo: "Bet placed - reserve plates",
+            },
+            {
+              accountType: "wager_escrow",
+              accountId: input.wagerId,
+              plateDelta: input.plates,
+              memo: "Bet placed - escrow plates",
+            },
+          ],
+        });
+
+      // 7. Update member reserved balance and total wagered
+      await transaction.runAsync(
+        "update party_members set reserved_plate_balance = reserved_plate_balance + ?, total_plates_wagered = total_plates_wagered + ?, updated_at = ?, hlc = ? where party_id = ? and user_id = ?",
+        [input.plates, input.plates, timestamp, createDefaultHlc(), input.partyId, input.userId],
+      );
+
+      // 8. Insert bet
+      await transaction.runAsync(
+        `insert into bets (
+          id, wager_id, user_id, option_id, plates_wagered, real_money_amount_cents,
+          placed_at, status, created_at, updated_at, hlc, last_modified_by_device_id
+        ) values (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+        [
+          betId,
+          input.wagerId,
+          input.userId,
+          input.optionId,
+          input.plates,
+          input.realMoneyAmountCents ?? null,
+          timestamp,
+          timestamp,
+          timestamp,
+          betHlc,
+          input.deviceId,
+        ],
+      );
+
+      // 9. Enqueue sync mutation
+      await enqueueMutation(
+        {
+          tableName: "bets",
+          recordId: betId,
+          operation: "insert",
+          payload: {
+            id: betId,
+            wagerId: input.wagerId,
+            userId: input.userId,
+            optionId: input.optionId,
+            platesWagered: input.plates,
+            realMoneyAmountCents: input.realMoneyAmountCents ?? null,
+            status: "pending",
+            placedAt: timestamp,
+          },
+          deviceId: input.deviceId,
+          hlc: betHlc,
+        });
+    });
+
+    return { betId, transactionId };
   } catch (error) {
     throw toBetApiError("Failed to place bet.", error);
   }
 };
 
-export const getBet = async (betId: Uuid): Promise<Bet | null> => {
+export const cancelBet = async (input: CancelBetInput): Promise<CancelBetResult> => {
   try {
-    const db = await getDb();
-    const rows = await db
-      .select()
-      .from(bets)
-      .where(and(eq(bets.id, betId), isNull(bets.deletedAt)))
-      .limit(1);
+    const database = await openSQLiteDatabase();
+    const timestamp = now();
+    const cancelHlc = createDefaultHlc();
+    let platesRefunded = 0;
 
-    return rows[0] ?? null;
+    await database.withExclusiveTransactionAsync(async (transaction) => {
+      // 1. Fetch bet
+      const betRow = await transaction.getFirstAsync<{
+        id: string;
+        wager_id: string;
+        user_id: string;
+        plates_wagered: number;
+        status: string;
+      }>(
+        "select id, wager_id, user_id, plates_wagered, status from bets where id = ? and deleted_at is null",
+        input.betId,
+      );
+      if (!betRow) {
+        throw new BetApiError("Bet not found.");
+      }
+      if (betRow.user_id !== input.userId) {
+        throw new BetApiError("Bet does not belong to user.");
+      }
+      if (betRow.status !== "pending") {
+        throw new BetApiError(`Cannot cancel bet with status ${betRow.status}.`);
+      }
+
+      // 2. Check wager is still open
+      const wagerRow = await transaction.getFirstAsync<{ status: string; party_id: string }>(
+        "select status, party_id from wagers where id = ? and deleted_at is null",
+        betRow.wager_id,
+      );
+      if (!wagerRow || wagerRow.status !== "open") {
+        throw new BetApiError("Cannot cancel bet on closed wager.");
+      }
+
+      platesRefunded = betRow.plates_wagered;
+
+      // 3. Refund ledger: wager_escrow -> member_available
+      await postLedgerTransaction(
+        {
+          partyId: wagerRow.party_id,
+          sourceTable: "bets",
+          sourceId: betRow.id,
+          deviceId: input.deviceId,
+          wagerId: betRow.wager_id,
+          betId: betRow.id,
+          entries: [
+            {
+              accountType: "wager_escrow",
+              accountId: betRow.wager_id,
+              plateDelta: -betRow.plates_wagered,
+              memo: "Bet cancelled - refund from escrow",
+            },
+            {
+              accountType: "member_available",
+              accountId: input.userId,
+              plateDelta: betRow.plates_wagered,
+              memo: "Bet cancelled - refund to available",
+            },
+          ],
+        },
+        transaction,
+      );
+
+      // 4. Update member reserved balance
+      await transaction.runAsync(
+        "update party_members set reserved_plate_balance = max(0, reserved_plate_balance - ?), updated_at = ?, hlc = ? where party_id = ? and user_id = ?",
+        [betRow.plates_wagered, timestamp, cancelHlc, wagerRow.party_id, input.userId],
+      );
+
+      // 5. Update bet status
+      await transaction.runAsync(
+        "update bets set status = 'void', updated_at = ?, hlc = ? where id = ?",
+        [timestamp, cancelHlc, input.betId],
+      );
+
+      // 6. Sync
+      await enqueueMutation(
+        {
+          tableName: "bets",
+          recordId: betRow.id,
+          operation: "update",
+          payload: { status: "void" },
+          deviceId: input.deviceId,
+          hlc: cancelHlc,
+        });
+    });
+
+    return { refunded: true, platesRefunded };
   } catch (error) {
-    throw toBetApiError("Failed to read bet.", error);
+    throw toBetApiError("Failed to cancel bet.", error);
   }
 };
 
-export const getBetsForWager = async (wagerId: Uuid): Promise<BetWithUser[]> => {
+export const getBetsForWager = async (wagerId: Uuid): Promise<BetWithDetails[]> => {
   try {
     const database = await openSQLiteDatabase();
-    const rows = await database.getAllAsync<BetRow>(
+    const rows = await database.getAllAsync<BetWithDetails>(
       `select
-        b.id,
-        b.wager_id,
-        b.user_id,
-        b.option_id,
-        b.plates_wagered,
-        b.real_money_amount_cents,
-        b.placed_at,
-        b.locked_at,
-        b.resolved_at,
-        b.status,
-        b.created_at,
-        b.updated_at,
-        b.deleted_at,
-        b.hlc,
-        b.last_modified_by_device_id,
-        u.display_name,
-        u.avatar_color
+        b.id, b.wager_id as wagerId, b.user_id as userId, b.option_id as optionId,
+        b.plates_wagered as platesWagered, b.real_money_amount_cents as realMoneyAmountCents,
+        b.placed_at as placedAt, b.locked_at as lockedAt, b.resolved_at as resolvedAt,
+        b.status, b.created_at as createdAt, b.updated_at as updatedAt,
+        b.deleted_at as deletedAt, b.hlc, b.last_modified_by_device_id as lastModifiedByDeviceId,
+        u.display_name as userDisplayName, wo.label as optionLabel
        from bets b
        join users u on u.id = b.user_id
+       join wager_options wo on wo.id = b.option_id
        where b.wager_id = ? and b.deleted_at is null
-       order by b.placed_at asc`,
+       order by b.created_at desc`,
       wagerId,
     );
-
-    return rows.map(rowToBetWithUser);
+    return rows;
   } catch (error) {
-    throw toBetApiError("Failed to list bets for wager.", error);
+    throw toBetApiError("Failed to get bets for wager.", error);
   }
 };
 
-export const getUserBets = async (
-  userId: Uuid,
-  limit = 50,
-): Promise<BetWithWager[]> => {
+export const getBetsForUser = async (userId: Uuid): Promise<UserBetWithDetails[]> => {
   try {
     const database = await openSQLiteDatabase();
-    const rows = await database.getAllAsync<BetWithWagerRow>(
+    const rows = await database.getAllAsync<UserBetWithDetails>(
       `select
-        b.id,
-        b.wager_id,
-        b.user_id,
-        b.option_id,
-        b.plates_wagered,
-        b.real_money_amount_cents,
-        b.placed_at,
-        b.locked_at,
-        b.resolved_at,
-        b.status,
-        b.created_at,
-        b.updated_at,
-        b.deleted_at,
-        b.hlc,
-        b.last_modified_by_device_id,
-        w.question,
-        w.party_id
+        b.id, b.wager_id as wagerId, b.user_id as userId, b.option_id as optionId,
+        b.plates_wagered as platesWagered, b.real_money_amount_cents as realMoneyAmountCents,
+        b.placed_at as placedAt, b.locked_at as lockedAt, b.resolved_at as resolvedAt,
+        b.status, b.created_at as createdAt, b.updated_at as updatedAt,
+        b.deleted_at as deletedAt, b.hlc, b.last_modified_by_device_id as lastModifiedByDeviceId,
+        w.question as wagerQuestion, p.name as partyName, wo.label as optionLabel
        from bets b
        join wagers w on w.id = b.wager_id
+       join parties p on p.id = w.party_id
+       join wager_options wo on wo.id = b.option_id
        where b.user_id = ? and b.deleted_at is null
-       order by b.placed_at desc
-       limit ?`,
-      [userId, limit],
+       order by b.created_at desc`,
+      userId,
     );
-
-    return rows.map(rowToBetWithWager);
+    return rows;
   } catch (error) {
-    throw toBetApiError("Failed to list user bets.", error);
+    throw toBetApiError("Failed to get bets for user.", error);
   }
 };
 
-export const lockBetsForWager = async (
-  wagerId: Uuid,
-  deviceId: string,
-): Promise<Bet[]> => {
+export const lockBetsForWager = async (wagerId: Uuid, deviceId: string): Promise<number> => {
   try {
-    const db = await getDb();
+    const database = await openSQLiteDatabase();
     const timestamp = now();
     const hlc = createDefaultHlc();
 
-    const updated = await db
-      .update(bets)
-      .set({
-        status: "locked",
-        lockedAt: timestamp,
-        updatedAt: timestamp,
-        hlc,
-        lastModifiedByDeviceId: deviceId,
-      })
-      .where(and(eq(bets.wagerId, wagerId), eq(bets.status, "pending")))
-      .returning();
+    await database.runAsync(
+      "update bets set status = 'locked', locked_at = ?, updated_at = ?, hlc = ? where wager_id = ? and status = 'pending' and deleted_at is null",
+      [timestamp, timestamp, hlc, wagerId],
+    );
 
-    for (const bet of updated) {
-      await enqueueMutation({
-        tableName: "bets",
-        recordId: bet.id,
-        operation: "update",
-        payload: betToPayload(bet),
-        deviceId,
-        baseHlc: bet.hlc,
-        hlc,
-      });
-    }
+    const row = await database.getFirstAsync<{ count: number }>(
+      "select count(*) as count from bets where wager_id = ? and status = 'locked' and deleted_at is null",
+      wagerId,
+    );
 
-    return updated;
+    return row?.count ?? 0;
   } catch (error) {
     throw toBetApiError("Failed to lock bets for wager.", error);
   }

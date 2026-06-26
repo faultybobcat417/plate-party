@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { Button } from "../../components/primitives/Button";
@@ -31,20 +32,22 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
       const profile = await loadProfile();
       if (!mounted) return;
 
-      if (!profile?.id) {
-        setUserId(null);
-        return;
-      }
-
-      setUserId(profile.id);
-      await loadPartiesForUser(profile.id);
+      setUserId(profile?.id ?? null);
     }
 
     void bootstrap();
     return () => {
       mounted = false;
     };
-  }, [loadPartiesForUser, navigation]);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) {
+        void loadPartiesForUser(userId);
+      }
+    }, [userId, loadPartiesForUser]),
+  );
 
   const handleRefresh = async () => {
     if (!userId) return;
@@ -99,6 +102,24 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
           onPress={() => navigation.navigate("CreateParty")}
         />
       </View>
+
+      <View style={styles.discoveryRow}>
+        <Button
+          title="🔍 Discover Parties"
+          variant="secondary"
+          size="sm"
+          onPress={() => navigation.navigate("PartyDiscovery")}
+          style={styles.discoveryButton}
+        />
+        <Button
+          title="🏆 Leaderboard"
+          variant="secondary"
+          size="sm"
+          onPress={() => navigation.navigate("GlobalLeaderboard")}
+          style={styles.discoveryButton}
+        />
+      </View>
+
       <FlatList
         data={parties}
         keyExtractor={(item) => item.party.id}
@@ -152,6 +173,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[6],
     paddingTop: spacing[4],
     paddingBottom: spacing[2],
+  },
+  discoveryRow: {
+    flexDirection: "row",
+    gap: spacing[3],
+    paddingHorizontal: spacing[6],
+    paddingBottom: spacing[3],
+  },
+  discoveryButton: {
+    flex: 1,
   },
   title: {
     color: colors.ink[900],

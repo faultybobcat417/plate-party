@@ -135,7 +135,6 @@ export const getDb = async (): Promise<AppDatabase> => {
 };
 
 export const getDrizzleDatabase = getDb;
-export const initializeDatabase = getDb;
 
 export const getDatabaseHealth = async (): Promise<DatabaseHealth> => {
   try {

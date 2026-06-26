@@ -3,153 +3,72 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
-  applyInboundMutations,
   countPendingOutbox,
   getOutboxStats,
-  listPendingMutations,
   processOutbox,
-  type InboundMutation,
   type OutboxStats,
-  type ProcessOutboxResult,
   type SyncPeer,
 } from "../api/sync";
-import type { SyncOutboxEntry } from "../db/schema";
 
-export type SyncStoreState = {
+interface SyncState {
   pendingCount: number;
-  outboxStats: OutboxStats;
-  pendingMutations: SyncOutboxEntry[];
-  isLoading: boolean;
+  isOnline: boolean;
   isProcessing: boolean;
-  error: string | null;
-};
+  lastSyncTime: string | null;
+  syncError: string | null;
+  outboxStats: OutboxStats;
 
-export type SyncStoreActions = {
   loadPendingCount: () => Promise<void>;
   loadOutboxStats: () => Promise<void>;
-  loadPendingMutations: (limit?: number) => Promise<void>;
-  processOutbox: (peers: SyncPeer[], limit?: number) => Promise<ProcessOutboxResult>;
-  applyInboundMutations: (mutations: InboundMutation[]) => Promise<void>;
+  processOutbox: (peers: SyncPeer[]) => Promise<void>;
+  setOnline: (isOnline: boolean) => void;
   clearError: () => void;
-};
+}
 
-export type SyncStore = SyncStoreState & SyncStoreActions;
-
-const initialState: SyncStoreState = {
-  pendingCount: 0,
-  outboxStats: {
-    pending: 0,
-    sending: 0,
-    sent: 0,
-    failed: 0,
-    conflicted: 0,
-  },
-  pendingMutations: [],
-  isLoading: false,
-  isProcessing: false,
-  error: null,
-};
-
-export const useSyncStore = create<SyncStore>()(
+export const useSyncStore = create<SyncState>()(
   persist(
-    (set) => ({
-      ...initialState,
+    (set, get) => ({
+      pendingCount: 0,
+      isOnline: true,
+      isProcessing: false,
+      lastSyncTime: null,
+      syncError: null,
+      outboxStats: { pending: 0, sending: 0, sent: 0, failed: 0, conflicted: 0 },
 
       loadPendingCount: async () => {
-        set({ isLoading: true, error: null });
-
         try {
-          const pendingCount = await countPendingOutbox();
-          set({ pendingCount, isLoading: false });
+          const count = await countPendingOutbox();
+          set({ pendingCount: count });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load pending count.",
-            isLoading: false,
-          });
+          set({ syncError: error instanceof Error ? error.message : "Unknown error" });
         }
       },
 
       loadOutboxStats: async () => {
-        set({ isLoading: true, error: null });
-
         try {
-          const outboxStats = await getOutboxStats();
-          set({ outboxStats, isLoading: false });
+          const stats = await getOutboxStats();
+          set({ outboxStats: stats });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load outbox stats.",
-            isLoading: false,
-          });
+          set({ syncError: error instanceof Error ? error.message : "Unknown error" });
         }
       },
 
-      loadPendingMutations: async (limit) => {
-        set({ isLoading: true, error: null });
-
+      processOutbox: async (peers) => {
+        set({ isProcessing: true, syncError: null });
         try {
-          const pendingMutations = await listPendingMutations(limit);
-          set({ pendingMutations, isLoading: false });
+          await processOutbox(peers);
+          set({ isProcessing: false, lastSyncTime: new Date().toISOString() });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load pending mutations.",
-            isLoading: false,
-          });
+          set({ syncError: error instanceof Error ? error.message : "Unknown error", isProcessing: false });
         }
       },
 
-      processOutbox: async (peers, limit) => {
-        set({ isProcessing: true, error: null });
-
-        try {
-          const result = await processOutbox(peers, limit);
-          const pendingCount = await countPendingOutbox();
-          const outboxStats = await getOutboxStats();
-          const pendingMutations = await listPendingMutations(limit);
-          set({
-            pendingCount,
-            outboxStats,
-            pendingMutations,
-            isProcessing: false,
-          });
-          return result;
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to process outbox.",
-            isProcessing: false,
-          });
-          throw error;
-        }
-      },
-
-      applyInboundMutations: async (mutations) => {
-        set({ isProcessing: true, error: null });
-
-        try {
-          await applyInboundMutations(mutations);
-          const pendingCount = await countPendingOutbox();
-          const outboxStats = await getOutboxStats();
-          set({ pendingCount, outboxStats, isProcessing: false });
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to apply inbound mutations.",
-            isProcessing: false,
-          });
-          throw error;
-        }
-      },
-
-      clearError: () => {
-        set({ error: null });
-      },
+      setOnline: (isOnline) => set({ isOnline }),
+      clearError: () => set({ syncError: null }),
     }),
     {
       name: "sync-store",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        pendingCount: state.pendingCount,
-        outboxStats: state.outboxStats,
-        pendingMutations: state.pendingMutations,
-      }),
-    },
-  ),
+    }
+  )
 );

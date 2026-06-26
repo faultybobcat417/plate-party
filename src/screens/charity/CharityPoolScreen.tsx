@@ -36,7 +36,7 @@ export function CharityPoolScreen({ route }: Props) {
 
   const poolTotal = useMemo(() => {
     const fromBalances = accountBalances.find(
-      (balance) => balance.accountType === "charity_pool" && balance.accountId === partyId,
+      (balance) => (balance as any).accountType === "charity_pool" && (balance as any).accountId === partyId,
     );
     return fromBalances?.balance ?? currentParty?.charityPoolPlates ?? 0;
   }, [accountBalances, currentParty, partyId]);

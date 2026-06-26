@@ -95,6 +95,9 @@ export const colors = {
     100: "#E9EBEE",
     50: "#F6F7F8",
   },
+  win: "#22C55E",
+  lose: "#EF4444",
+  gold: "#F59E0B",
 } as const;
 
 export type ColorPalette = typeof colors;

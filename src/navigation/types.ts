@@ -1,3 +1,4 @@
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { Uuid } from "../db/schema";
 
 export type RootStackParamList = {
@@ -8,9 +9,28 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-  HomeTab: undefined;
-  ActivityTab: undefined;
-  ProfileTab: undefined;
+  FeedTab: NavigatorScreenParams<FeedStackParamList>;
+  MarketTab: NavigatorScreenParams<MarketStackParamList>;
+  PartyTab: NavigatorScreenParams<PartyStackParamList>;
+  PlayTab: NavigatorScreenParams<PlayStackParamList>;
+  ProfileTab: NavigatorScreenParams<ProfileStackParamList>;
+};
+
+export type FeedStackParamList = {
+  FeedHome: undefined;
+  CreateChallenge: undefined;
+  ChallengeDetail: { challengeId: string };
+  CreateMeatPost: undefined;
+  CreateStakePost: undefined;
+  MeatPostDetail: { postId: string };
+  StakePostDetail: { postId: string };
+};
+
+export type MarketStackParamList = {
+  MarketHome: undefined;
+  MarketDetail: { marketId: string };
+  Watchlist: undefined;
+  Trade: { marketId: string; defaultOutcome: "yes" | "no" };
 };
 
 export type PartyStackParamList = {
@@ -28,15 +48,30 @@ export type PartyStackParamList = {
   Leaderboard: { partyId: Uuid };
   CharityPool: { partyId: Uuid };
   RealMoneySettle: { partyId: Uuid; userId: Uuid };
-  Activity: undefined;
-  Profile: undefined;
+  EditProfile: undefined;
+  Settings: undefined;
+  PartyDiscovery: undefined;
+  GlobalLeaderboard: undefined;
+};
+
+export type PlayStackParamList = {
+  PlayHome: undefined;
+  GameScreen: { gameId: string };
+};
+
+export type ProfileStackParamList = {
+  ProfileHome: undefined;
+  GiverLeaderboard: undefined;
+  ActivityHistory: undefined;
+  EditProfile: undefined;
   Settings: undefined;
 };
 
+/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-empty-object-type --
+   React Navigation requires this global namespace augmentation so that
+   useNavigation() is typed against our root param list. */
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace ReactNavigation {
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     interface RootParamList extends RootStackParamList {}
   }
 }

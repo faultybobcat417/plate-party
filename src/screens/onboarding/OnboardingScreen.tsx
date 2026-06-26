@@ -39,6 +39,7 @@ export function OnboardingScreen({ navigation }: OnboardingScreenProps) {
         <Button
           title="Create Profile"
           size="lg"
+          accessibilityLabel="Create profile"
           onPress={() => navigation.navigate("CreateProfile")}
         />
       </View>

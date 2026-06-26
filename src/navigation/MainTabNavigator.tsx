@@ -1,10 +1,17 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
+import { useEffect } from "react";
 
 import { ActivityScreen } from "../screens/activity/ActivityScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { colors, typography } from "../theme";
+import { FeedStackNavigator } from "./FeedStackNavigator";
+import { MarketStackNavigator } from "./MarketStackNavigator";
 import { PartyStackNavigator } from "./PartyStackNavigator";
+import { PlayStackNavigator } from "./PlayStackNavigator";
+import { ProfileStackNavigator } from "./ProfileStackNavigator";
+import { OnlineBadge } from "../components/play/OnlineBadge";
+import { useOnlineStore, startOnlinePolling, stopOnlinePolling } from "../stores/useOnlineStore";
 import type { MainTabParamList } from "./types";
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -23,7 +30,22 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   );
 }
 
+function PlayTabIcon({ focused }: { focused: boolean }) {
+  const onlineCount = useOnlineStore((state) => state.onlineCount);
+  return (
+    <View>
+      <TabIcon label="Play" focused={focused} />
+      <OnlineBadge count={onlineCount} />
+    </View>
+  );
+}
+
 export function MainTabNavigator() {
+  useEffect(() => {
+    startOnlinePolling();
+    return () => stopOnlinePolling();
+  }, []);
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -33,22 +55,36 @@ export function MainTabNavigator() {
       }}
     >
       <Tab.Screen
-        name="HomeTab"
-        component={PartyStackNavigator}
+        name="FeedTab"
+        component={FeedStackNavigator}
         options={{
-          tabBarLabel: ({ focused }) => <TabIcon label="Home" focused={focused} />,
+          tabBarLabel: ({ focused }) => <TabIcon label="Feed" focused={focused} />,
         }}
       />
       <Tab.Screen
-        name="ActivityTab"
-        component={ActivityScreen}
+        name="MarketTab"
+        component={MarketStackNavigator}
         options={{
-          tabBarLabel: ({ focused }) => <TabIcon label="Activity" focused={focused} />,
+          tabBarLabel: ({ focused }) => <TabIcon label="Market" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="PartyTab"
+        component={PartyStackNavigator}
+        options={{
+          tabBarLabel: ({ focused }) => <TabIcon label="Party" focused={focused} />,
+        }}
+      />
+      <Tab.Screen
+        name="PlayTab"
+        component={PlayStackNavigator}
+        options={{
+          tabBarLabel: ({ focused }) => <PlayTabIcon focused={focused} />,
         }}
       />
       <Tab.Screen
         name="ProfileTab"
-        component={ProfileScreen}
+        component={ProfileStackNavigator}
         options={{
           tabBarLabel: ({ focused }) => <TabIcon label="Profile" focused={focused} />,
         }}

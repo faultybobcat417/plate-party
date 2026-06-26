@@ -1,11 +1,5 @@
-import { useEffect } from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from "react-native-reanimated";
+import { useEffect, useRef } from "react";
+import { Animated, Modal, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../primitives/Button";
 import { colors, spacing, typography } from "../../theme";
@@ -17,29 +11,59 @@ export type RevealOverlayProps = {
   onClose: () => void;
 };
 
-export function RevealOverlay({ visible, won, amount, onClose }: RevealOverlayProps) {
-  const scale = useSharedValue(0);
-  const opacity = useSharedValue(0);
+export function RevealOverlay({
+  visible,
+  won,
+  amount,
+  onClose,
+}: RevealOverlayProps) {
+  const scale = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      scale.value = withSpring(1, { damping: 12 });
-      opacity.value = withTiming(1, { duration: 300 });
+      Animated.parallel([
+        Animated.spring(scale, {
+          toValue: 1,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
     } else {
-      scale.value = withTiming(0);
-      opacity.value = withTiming(0);
+      Animated.parallel([
+        Animated.timing(scale, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
   }, [visible, scale, opacity]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
   return (
     <Modal visible={visible} transparent animationType="fade">
-      <View style={[styles.backdrop, { backgroundColor: won ? colors.glaze[900] : colors.wine[900] }]}>
-        <Animated.View style={[styles.content, animatedStyle]}>
+      <View
+        style={[
+          styles.backdrop,
+          { backgroundColor: won ? colors.glaze[900] : colors.wine[900] },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.content,
+            { opacity, transform: [{ scale }] },
+          ]}
+        >
           <Text style={styles.emoji}>{won ? "🎉" : "😢"}</Text>
           <Text style={styles.title}>{won ? "You Won!" : "You Lost"}</Text>
           <Text style={styles.amount}>

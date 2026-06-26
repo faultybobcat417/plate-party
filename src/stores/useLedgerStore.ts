@@ -3,118 +3,68 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
-  getLedgerBalance,
   getPartyAccountBalances,
+  listAllLedgerEntries,
   listLedgerEntriesForParty,
-  reconcileStoredBalances,
   type AccountBalance,
 } from "../api/ledger";
-import type { LedgerAccountType, LedgerEntry, Uuid } from "../db/schema";
+import { LedgerEntry } from "../db/schema";
 
-export type LedgerStoreState = {
+interface LedgerState {
   entries: LedgerEntry[];
   accountBalances: AccountBalance[];
-  selectedBalance: number;
   isLoading: boolean;
   error: string | null;
-};
 
-export type LedgerStoreActions = {
-  loadLedgerEntriesForParty: (partyId: Uuid, limit?: number) => Promise<void>;
-  loadPartyAccountBalances: (partyId: Uuid) => Promise<void>;
-  loadLedgerBalance: (
-    accountType: LedgerAccountType,
-    accountId: string,
-    partyId?: Uuid,
-  ) => Promise<void>;
-  reconcilePartyBalances: (partyId: Uuid) => Promise<void>;
+  loadLedgerEntriesForParty: (partyId: string, limit?: number) => Promise<void>;
+  loadPartyAccountBalances: (partyId: string) => Promise<void>;
+  loadAllEntries: (limit?: number) => Promise<void>;
   clearError: () => void;
-};
+}
 
-export type LedgerStore = LedgerStoreState & LedgerStoreActions;
-
-const initialState: LedgerStoreState = {
-  entries: [],
-  accountBalances: [],
-  selectedBalance: 0,
-  isLoading: false,
-  error: null,
-};
-
-export const useLedgerStore = create<LedgerStore>()(
+export const useLedgerStore = create<LedgerState>()(
   persist(
-    (set) => ({
-      ...initialState,
+    (set, get) => ({
+      entries: [],
+      accountBalances: [],
+      isLoading: false,
+      error: null,
 
-      loadLedgerEntriesForParty: async (partyId, limit) => {
+      loadLedgerEntriesForParty: async (partyId, limit = 100) => {
         set({ isLoading: true, error: null });
-
         try {
           const entries = await listLedgerEntriesForParty(partyId, limit);
-          set({ entries, isLoading: false });
+          set({ entries: entries as any, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load ledger entries.",
-            isLoading: false,
-          });
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
       },
 
       loadPartyAccountBalances: async (partyId) => {
         set({ isLoading: true, error: null });
-
         try {
-          const accountBalances = await getPartyAccountBalances(partyId);
-          set({ accountBalances, isLoading: false });
+          const balances = await getPartyAccountBalances(partyId);
+          set({ accountBalances: balances, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load account balances.",
-            isLoading: false,
-          });
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
       },
 
-      loadLedgerBalance: async (accountType, accountId, partyId) => {
+      loadAllEntries: async (limit = 200) => {
         set({ isLoading: true, error: null });
-
         try {
-          const selectedBalance = await getLedgerBalance(accountType, accountId, partyId);
-          set({ selectedBalance, isLoading: false });
+          const entries = await listAllLedgerEntries(limit);
+          set({ entries: entries as any, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load ledger balance.",
-            isLoading: false,
-          });
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
       },
 
-      reconcilePartyBalances: async (partyId) => {
-        set({ isLoading: true, error: null });
-
-        try {
-          await reconcileStoredBalances(partyId);
-          const accountBalances = await getPartyAccountBalances(partyId);
-          set({ accountBalances, isLoading: false });
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to reconcile balances.",
-            isLoading: false,
-          });
-        }
-      },
-
-      clearError: () => {
-        set({ error: null });
-      },
+      clearError: () => set({ error: null }),
     }),
     {
       name: "ledger-store",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        entries: state.entries,
-        accountBalances: state.accountBalances,
-        selectedBalance: state.selectedBalance,
-      }),
-    },
-  ),
+    }
+  )
 );

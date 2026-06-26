@@ -3,121 +3,106 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
+  getBetsForUser,
   getBetsForWager,
-  getUserBets,
   placeBet,
-  type BetWithUser,
-  type BetWithWager,
+  type BetWithDetails,
   type PlaceBetInput,
+  type UserBetWithDetails,
 } from "../api/bet";
-import type { Bet, Uuid } from "../db/schema";
+import {
+  getActiveBets,
+  getBetHistory,
+  getMarketStats,
+  type ActiveBet,
+  type BetHistoryEntry,
+  type MarketStats,
+} from "../api/marketTracker";
 
-export type BetStoreState = {
-  betsForWager: BetWithUser[];
-  userBets: BetWithWager[];
-  currentBet: Bet | null;
+interface BetState {
+  betsForWager: BetWithDetails[];
+  userBets: UserBetWithDetails[];
+  activeBets: ActiveBet[];
+  betHistory: BetHistoryEntry[];
+  marketStats: MarketStats | null;
   isLoading: boolean;
   error: string | null;
-};
 
-export type BetStoreActions = {
-  loadBetsForWager: (wagerId: Uuid) => Promise<void>;
-  loadUserBets: (userId: Uuid, limit?: number) => Promise<void>;
-  placeBet: (input: PlaceBetInput) => Promise<Bet>;
-  setCurrentBet: (bet: Bet | null) => void;
+  loadBetsForWager: (wagerId: string) => Promise<void>;
+  loadActiveBets: (userId: string) => Promise<void>;
+  loadBetHistory: (userId: string) => Promise<void>;
+  loadMarketStats: (userId: string) => Promise<void>;
+  placeBet: (input: PlaceBetInput) => Promise<void>;
   clearError: () => void;
-};
+}
 
-export type BetStore = BetStoreState & BetStoreActions;
-
-const initialState: BetStoreState = {
-  betsForWager: [],
-  userBets: [],
-  currentBet: null,
-  isLoading: false,
-  error: null,
-};
-
-export const useBetStore = create<BetStore>()(
+export const useBetStore = create<BetState>()(
   persist(
     (set, get) => ({
-      ...initialState,
+      betsForWager: [],
+      userBets: [],
+      activeBets: [],
+      betHistory: [],
+      marketStats: null,
+      isLoading: false,
+      error: null,
 
       loadBetsForWager: async (wagerId) => {
         set({ isLoading: true, error: null });
-
         try {
           const bets = await getBetsForWager(wagerId);
           set({ betsForWager: bets, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load bets.",
-            isLoading: false,
-          });
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
       },
 
-      loadUserBets: async (userId, limit) => {
+      loadActiveBets: async (userId) => {
         set({ isLoading: true, error: null });
-
         try {
-          const bets = await getUserBets(userId, limit);
-          set({ userBets: bets, isLoading: false });
+          const bets = await getActiveBets(userId);
+          set({ activeBets: bets, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to load user bets.",
-            isLoading: false,
-          });
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
+        }
+      },
+
+      loadBetHistory: async (userId) => {
+        set({ isLoading: true, error: null });
+        try {
+          const history = await getBetHistory(userId);
+          set({ betHistory: history, isLoading: false });
+        } catch (error) {
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
+        }
+      },
+
+      loadMarketStats: async (userId) => {
+        set({ isLoading: true, error: null });
+        try {
+          const stats = await getMarketStats(userId);
+          set({ marketStats: stats, isLoading: false });
+        } catch (error) {
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
       },
 
       placeBet: async (input) => {
         set({ isLoading: true, error: null });
-
         try {
-          const bet = await placeBet(input);
-          const userBets = [bet as BetWithWager, ...get().userBets];
-          const betsForWager = [...get().betsForWager];
-          const existingIndex = betsForWager.findIndex(
-            (existing) => existing.userId === bet.userId,
-          );
-
-          if (existingIndex >= 0) {
-            betsForWager[existingIndex] = { ...betsForWager[existingIndex], ...bet };
-          }
-
-          set({
-            currentBet: bet,
-            userBets,
-            betsForWager,
-            isLoading: false,
-          });
-          return bet;
+          await placeBet(input);
+          const bets = await getBetsForWager(input.wagerId);
+          set({ betsForWager: bets, isLoading: false });
         } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Failed to place bet.",
-            isLoading: false,
-          });
-          throw error;
+          set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
       },
 
-      setCurrentBet: (bet) => {
-        set({ currentBet: bet });
-      },
-
-      clearError: () => {
-        set({ error: null });
-      },
+      clearError: () => set({ error: null }),
     }),
     {
-      name: "bet-store",
+      name: "bet-store-v2",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        betsForWager: state.betsForWager,
-        userBets: state.userBets,
-        currentBet: state.currentBet,
-      }),
-    },
-  ),
+    }
+  )
 );

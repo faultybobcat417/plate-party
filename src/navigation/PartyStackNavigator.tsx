@@ -11,7 +11,9 @@ import { WagerDetailScreen } from "../screens/wager/WagerDetailScreen";
 import { PlaceBetSheet } from "../screens/wager/PlaceBetSheet";
 import { BetConfirmedSheet } from "../screens/wager/BetConfirmedSheet";
 import { RevealScreen } from "../screens/wager/RevealScreen";
-import { LeaderboardScreen } from "../screens/leaderboard/LeaderboardScreen";
+// import { LeaderboardScreen } from "../screens/leaderboard/LeaderboardScreen";
+// import { GlobalLeaderboardScreen } from "../screens/party/GlobalLeaderboardScreen";
+import { PartyDiscoveryScreen } from "../screens/party/PartyDiscoveryScreen";
 import { CharityPoolScreen } from "../screens/charity/CharityPoolScreen";
 import { RealMoneySettleScreen } from "../screens/charity/RealMoneySettleScreen";
 import type { PartyStackParamList } from "./types";
@@ -80,11 +82,23 @@ export function PartyStackNavigator() {
         component={RevealScreen}
         options={{ title: "Reveal" }}
       />
+      {/* Leaderboard hidden for MVP
       <Stack.Screen
         name="Leaderboard"
         component={LeaderboardScreen}
         options={{ title: "Leaderboard" }}
+      /> */}
+      <Stack.Screen
+        name="PartyDiscovery"
+        component={PartyDiscoveryScreen}
+        options={{ title: "Discover Parties" }}
       />
+      {/* GlobalLeaderboard hidden for MVP
+      <Stack.Screen
+        name="GlobalLeaderboard"
+        component={GlobalLeaderboardScreen}
+        options={{ title: "Leaderboard" }}
+      /> */}
       <Stack.Screen
         name="CharityPool"
         component={CharityPoolScreen}

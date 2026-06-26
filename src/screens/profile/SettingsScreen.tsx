@@ -7,6 +7,8 @@ import {
   Switch,
   Text,
   View,
+  Image,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -24,7 +26,7 @@ type Props = NativeStackScreenProps<PartyStackParamList, "Settings">;
 const HAPTICS_ENABLED_KEY = "plate-party-settings-haptics-enabled";
 const NOTIFICATIONS_ENABLED_KEY = "plate-party-settings-notifications-enabled";
 
-export function SettingsScreen({ navigation }: Props) {
+export function SettingsScreen({ navigation: _navigation }: Props) {
   const pendingCount = useSyncStore((state) => state.pendingCount);
   const isProcessing = useSyncStore((state) => state.isProcessing);
   const loadPendingCount = useSyncStore((state) => state.loadPendingCount);
@@ -33,6 +35,7 @@ export function SettingsScreen({ navigation }: Props) {
 
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   useEffect(() => {
     void loadPendingCount();
@@ -69,6 +72,22 @@ export function SettingsScreen({ navigation }: Props) {
     }
   };
 
+  const handleChangePhoto = () => {
+    Alert.alert("Change Photo", "Photo picker coming soon!", [
+      { text: "OK", style: "default" },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const handleSubmitPlates = () => {
+    Alert.alert("Submit Plates", "How many plates to donate?", [
+      { text: "10", onPress: () => Alert.alert("Thanks!", "10 plates donated!") },
+      { text: "50", onPress: () => Alert.alert("Thanks!", "50 plates donated!") },
+      { text: "100", onPress: () => Alert.alert("Thanks!", "100 plates donated!") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   const renderToggle = (label: string, value: boolean, onChange: (value: boolean) => void) => (
     <View style={styles.toggleRow}>
       <Text style={styles.toggleLabel}>{label}</Text>
@@ -86,12 +105,31 @@ export function SettingsScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Settings</Text>
 
+        {/* Profile Photo */}
+        <Card variant="elevated" padding={4} style={styles.card}>
+          <Text style={styles.sectionTitle}>Profile Photo</Text>
+          <View style={{ alignItems: "center", marginVertical: 12 }}>
+            <Image
+              source={{ uri: avatarUri || "https://picsum.photos/seed/avatar/100/100" }}
+              style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.ash[200] }}
+            />
+            <TouchableOpacity
+              onPress={handleChangePhoto}
+              style={{ marginTop: 8, paddingVertical: 6, paddingHorizontal: 16, backgroundColor: colors.glaze[100], borderRadius: 8 }}
+            >
+              <Text style={{ color: colors.glaze[700], fontWeight: "600" }}>Change Photo</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
+
+        {/* Preferences */}
         <Card variant="elevated" padding={4} style={styles.card}>
           <Text style={styles.sectionTitle}>Preferences</Text>
           {renderToggle("Haptics", hapticsEnabled, toggleHaptics)}
           {renderToggle("Notifications", notificationsEnabled, toggleNotifications)}
         </Card>
 
+        {/* Sync */}
         <Card variant="elevated" padding={4} style={styles.card}>
           <Text style={styles.sectionTitle}>Sync</Text>
           <View style={styles.syncRow}>
@@ -105,11 +143,16 @@ export function SettingsScreen({ navigation }: Props) {
           />
         </Card>
 
-        <Pressable onPress={() => navigation.navigate("Profile")}>
-          <Card variant="default" padding={4} style={styles.card}>
-            <Text style={styles.linkText}>View Profile</Text>
-          </Card>
-        </Pressable>
+        {/* Submit Plates */}
+        <Card variant="elevated" padding={4} style={styles.card}>
+          <Text style={styles.sectionTitle}>Donate Plates</Text>
+          <TouchableOpacity
+            onPress={handleSubmitPlates}
+            style={{ backgroundColor: colors.gold, padding: 12, borderRadius: 8, alignItems: "center", marginTop: 8 }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>🍽️ Submit Plates</Text>
+          </TouchableOpacity>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
@@ -157,10 +200,5 @@ const styles = StyleSheet.create({
   syncLabel: {
     color: colors.ink[900],
     fontSize: typography.sizes.base,
-  },
-  linkText: {
-    color: colors.glaze[700],
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
 });

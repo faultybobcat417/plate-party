@@ -1,0 +1,82 @@
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { type OnboardingStep, type UserIntention } from "../types/onboarding";
+
+const ONBOARDING_COMPLETE_KEY = "onboarding_complete";
+const ONBOARDING_STEP_KEY = "onboarding_step";
+
+interface OnboardingState {
+  step: OnboardingStep;
+  intention: UserIntention | null;
+  selectedCharities: string[];
+  platesEarned: number;
+  isComplete: boolean;
+
+  setStep: (step: OnboardingStep) => void;
+  setIntention: (intention: UserIntention) => void;
+  setSelectedCharities: (ids: string[]) => void;
+  addPlates: (amount: number) => void;
+  markComplete: () => Promise<void>;
+  reset: () => void;
+}
+
+const STEP_ORDER: OnboardingStep[] = [
+  "welcome",
+  "intention",
+  "charities",
+  "tutorial",
+  "firstGoal",
+  "complete",
+];
+
+export const useOnboardingStore = create<OnboardingState>()(
+  persist(
+    (set, get) => ({
+      step: "welcome",
+      intention: null,
+      selectedCharities: [],
+      platesEarned: 0,
+      isComplete: false,
+
+      setStep: (step) => set({ step }),
+
+      setIntention: (intention) => {
+        set({ intention });
+      },
+
+      setSelectedCharities: (ids) => {
+        set({ selectedCharities: ids });
+      },
+
+      addPlates: (amount) => {
+        set({ platesEarned: get().platesEarned + amount });
+      },
+
+      markComplete: async () => {
+        set({ isComplete: true, step: "complete" });
+        await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, "true");
+      },
+
+      reset: () => {
+        set({
+          step: "welcome",
+          intention: null,
+          selectedCharities: [],
+          platesEarned: 0,
+          isComplete: false,
+        });
+      },
+    }),
+    {
+      name: "onboarding-store",
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
+
+export async function isOnboardingComplete(): Promise<boolean> {
+  const value = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+  return value === "true";
+}

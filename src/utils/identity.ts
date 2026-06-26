@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const CURRENT_USER_ID_KEY = "plate-party-current-user-id";
-const DEVICE_ID_KEY = "plate-party-device-id";
+export const CURRENT_USER_ID_KEY = "plate-party-current-user-id";
+export const DEVICE_ID_KEY = "plate-party-device-id";
 
 export async function getCurrentUserId(): Promise<string | null> {
   return AsyncStorage.getItem(CURRENT_USER_ID_KEY);

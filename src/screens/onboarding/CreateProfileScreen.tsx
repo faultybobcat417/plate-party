@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -27,14 +27,24 @@ export type CreateProfileScreenProps = NativeStackScreenProps<
   "CreateProfile"
 >;
 
+const DISPLAY_NAME_MAX_LENGTH = 30;
+const HANDLE_MAX_LENGTH = 50;
+
 export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [avatarColor, setAvatarColor] = useState<string>(AVATAR_COLORS[0].value);
   const [venmoHandle, setVenmoHandle] = useState("");
   const [cashAppHandle, setCashAppHandle] = useState("");
   const [paypalMeHandle, setPaypalMeHandle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    displayName?: string;
+    venmoHandle?: string;
+    cashAppHandle?: string;
+    paypalMeHandle?: string;
+  }>({});
 
   useEffect(() => {
     let mounted = true;
@@ -57,27 +67,83 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
     };
   }, []);
 
-  const handleSave = async () => {
+  const isValid = useMemo(() => {
     const trimmedName = displayName.trim();
+    return (
+      trimmedName.length > 0 &&
+      trimmedName.length <= DISPLAY_NAME_MAX_LENGTH &&
+      venmoHandle.trim().length <= HANDLE_MAX_LENGTH &&
+      cashAppHandle.trim().length <= HANDLE_MAX_LENGTH &&
+      paypalMeHandle.trim().length <= HANDLE_MAX_LENGTH &&
+      !venmoHandle.includes(" ") &&
+      !cashAppHandle.includes(" ") &&
+      !paypalMeHandle.includes(" ")
+    );
+  }, [displayName, venmoHandle, cashAppHandle, paypalMeHandle]);
+
+  const validateFields = () => {
+    const trimmedName = displayName.trim();
+    const nextErrors: typeof fieldErrors = {};
+
     if (!trimmedName) {
-      setError("Display name is required.");
+      nextErrors.displayName = "Display name is required.";
+    } else if (trimmedName.length > DISPLAY_NAME_MAX_LENGTH) {
+      nextErrors.displayName = `Display name must be ${DISPLAY_NAME_MAX_LENGTH} characters or less.`;
+    }
+
+    const validateHandle = (value: string, label: string) => {
+      if (value.length > HANDLE_MAX_LENGTH) {
+        return `${label} must be ${HANDLE_MAX_LENGTH} characters or less.`;
+      }
+      if (value.includes(" ")) {
+        return `${label} cannot contain spaces.`;
+      }
+      return undefined;
+    };
+
+    nextErrors.venmoHandle = validateHandle(venmoHandle.trim(), "Venmo handle");
+    nextErrors.cashAppHandle = validateHandle(
+      cashAppHandle.trim(),
+      "Cash App handle",
+    );
+    nextErrors.paypalMeHandle = validateHandle(
+      paypalMeHandle.trim(),
+      "PayPal.Me handle",
+    );
+
+    setFieldErrors(nextErrors);
+    return Object.values(nextErrors).every((e) => !e);
+  };
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    setError(null);
+
+    if (!validateFields()) {
       return;
     }
 
-    const existing = await loadProfile();
-    const profile: UserProfile = {
-      id: existing?.id ?? createUuid(),
-      deviceId: existing?.deviceId ?? createUuid(),
-      displayName: trimmedName,
-      avatarColor,
-      venmoHandle: venmoHandle.trim() || undefined,
-      cashAppHandle: cashAppHandle.trim() || undefined,
-      paypalMeHandle: paypalMeHandle.trim() || undefined,
-    };
+    setIsSaving(true);
+    try {
+      const trimmedName = displayName.trim();
+      const existing = await loadProfile();
+      const profile: UserProfile = {
+        id: existing?.id ?? createUuid(),
+        deviceId: existing?.deviceId ?? createUuid(),
+        displayName: trimmedName,
+        avatarColor,
+        venmoHandle: venmoHandle.trim() || undefined,
+        cashAppHandle: cashAppHandle.trim() || undefined,
+        paypalMeHandle: paypalMeHandle.trim() || undefined,
+      };
 
-    await saveProfile(profile);
-    setError(null);
-    navigation.replace("Main");
+      await saveProfile(profile);
+      navigation.replace("Main");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save profile.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) {
@@ -103,8 +169,15 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
           label="Display name"
           placeholder="e.g. Plate King"
           value={displayName}
-          onChangeText={setDisplayName}
+          onChangeText={(text) => {
+            setDisplayName(text);
+            setFieldErrors((prev) => ({ ...prev, displayName: undefined }));
+            setError(null);
+          }}
+          error={fieldErrors.displayName}
+          maxLength={DISPLAY_NAME_MAX_LENGTH}
           autoCapitalize="words"
+          accessibilityLabel="Display name"
         />
 
         <Text style={styles.sectionLabel}>Avatar color</Text>
@@ -113,12 +186,14 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
             <Pressable
               key={color.value}
               accessibilityRole="radio"
+              accessibilityLabel={`Select ${color.name} avatar`}
               accessibilityState={{ checked: avatarColor === color.value }}
               onPress={() => setAvatarColor(color.value)}
-              style={[
+              style={({ pressed }) => [
                 styles.colorButton,
                 { backgroundColor: color.value },
                 avatarColor === color.value && styles.colorButtonSelected,
+                pressed && styles.colorButtonPressed,
               ]}
             />
           ))}
@@ -130,28 +205,56 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
           label="Venmo handle"
           placeholder="@username"
           value={venmoHandle}
-          onChangeText={setVenmoHandle}
+          onChangeText={(text) => {
+            setVenmoHandle(text);
+            setFieldErrors((prev) => ({ ...prev, venmoHandle: undefined }));
+            setError(null);
+          }}
+          error={fieldErrors.venmoHandle}
+          maxLength={HANDLE_MAX_LENGTH}
           autoCapitalize="none"
+          accessibilityLabel="Venmo handle"
         />
         <Input
           label="Cash App handle"
           placeholder="$cashtag"
           value={cashAppHandle}
-          onChangeText={setCashAppHandle}
+          onChangeText={(text) => {
+            setCashAppHandle(text);
+            setFieldErrors((prev) => ({ ...prev, cashAppHandle: undefined }));
+            setError(null);
+          }}
+          error={fieldErrors.cashAppHandle}
+          maxLength={HANDLE_MAX_LENGTH}
           autoCapitalize="none"
+          accessibilityLabel="Cash App handle"
         />
         <Input
           label="PayPal.Me handle"
           placeholder="paypal.me/username"
           value={paypalMeHandle}
-          onChangeText={setPaypalMeHandle}
+          onChangeText={(text) => {
+            setPaypalMeHandle(text);
+            setFieldErrors((prev) => ({ ...prev, paypalMeHandle: undefined }));
+            setError(null);
+          }}
+          error={fieldErrors.paypalMeHandle}
+          maxLength={HANDLE_MAX_LENGTH}
           autoCapitalize="none"
+          accessibilityLabel="PayPal.Me handle"
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.footer}>
-          <Button title="Save & Continue" size="lg" onPress={handleSave} />
+          <Button
+            title="Save & Continue"
+            size="lg"
+            loading={isSaving}
+            disabled={!isValid}
+            accessibilityLabel="Save profile and continue"
+            onPress={handleSave}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -193,13 +296,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing[4],
   },
   colorButton: {
-    borderRadius: 20,
-    height: 40,
-    width: 40,
+    borderRadius: 22,
+    height: 44,
+    width: 44,
   },
   colorButtonSelected: {
     borderColor: colors.ink[900],
     borderWidth: 3,
+  },
+  colorButtonPressed: {
+    opacity: 0.8,
   },
   divider: {
     backgroundColor: colors.ash[200],
