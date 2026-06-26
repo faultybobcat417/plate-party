@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Toast, ToastVariant } from './Toast';
+import { Toast } from './Toast';
+
+type ToastVariant = 'info' | 'success' | 'error' | 'warning';
 
 interface ToastContextType {
   showToast: (message: string, variant?: ToastVariant, duration?: number) => void;
@@ -41,7 +43,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         <Toast
           key={toast.id}
           message={toast.message}
-          variant={toast.variant}
           duration={toast.duration}
           onDismiss={() => dismissToast(toast.id)}
         />

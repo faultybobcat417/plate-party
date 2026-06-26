@@ -29,9 +29,9 @@ export function CharityPoolScreen({ route }: Props) {
   const loadParty = usePartyStore((state) => state.loadParty);
 
   useEffect(() => {
-    void loadLedgerEntriesForParty(partyId);
-    void loadPartyAccountBalances(partyId);
-    void loadParty(partyId);
+    void loadLedgerEntriesForParty(partyId!);
+    void loadPartyAccountBalances(partyId!);
+    void loadParty(partyId!);
   }, [partyId, loadLedgerEntriesForParty, loadPartyAccountBalances, loadParty]);
 
   const poolTotal = useMemo(() => {

@@ -138,7 +138,7 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
       };
 
       await saveProfile(profile);
-      navigation.replace("Main");
+      navigation.replace("Main" as any);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save profile.");
     } finally {

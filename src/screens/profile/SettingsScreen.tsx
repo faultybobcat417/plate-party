@@ -17,11 +17,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Button } from "../../components/primitives/Button";
 import { Card } from "../../components/primitives/Card";
 import { SyncStatusBadge } from "../../components/composite/SyncStatusBadge";
-import type { PartyStackParamList } from "../../navigation/types";
+import type { ProfileStackParamList } from "../../navigation/types";
 import { useSyncStore } from "../../stores/useSyncStore";
 import { colors, spacing, typography } from "../../theme";
 
-type Props = NativeStackScreenProps<PartyStackParamList, "Settings">;
+type Props = NativeStackScreenProps<ProfileStackParamList, "Settings">;
 
 const HAPTICS_ENABLED_KEY = "plate-party-settings-haptics-enabled";
 const NOTIFICATIONS_ENABLED_KEY = "plate-party-settings-notifications-enabled";

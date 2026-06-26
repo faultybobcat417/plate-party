@@ -1,131 +1,156 @@
-import React, { useEffect, useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   FlatList,
-  ScrollView,
-  SafeAreaView,
+  Pressable,
   TextInput,
   StyleSheet,
-  Pressable,
+  RefreshControl,
+  ActivityIndicator,
 } from "react-native";
-import { useMarketStore } from "../../stores/useMarketStore";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { colors, spacing, typography } from "../../theme";
+import { useMarketStore } from "../../stores/useMarketStore";
 import { MarketCard } from "../../components/market/MarketCard";
-import { MarketCategoryPill } from "../../components/market/MarketCategoryPill";
+import type { MarketStackParamList } from "../../navigation/types";
 
-const categories = ["All", "Crypto", "Politics", "Sports", "Science", "Economy", "Entertainment"];
+type MarketNav = NativeStackNavigationProp<MarketStackParamList>;
 
-export function MarketHomeScreen() {
-  const navigation = useNavigation();
-  const { markets, watchlist, loadMarkets, isLoading } = useMarketStore();
-  const [selectedCategory, setSelectedCategory] = useState("All");
+const CATEGORIES = ["All", "Technology", "Finance", "Sports", "Climate", "Politics"];
+
+export default function MarketHomeScreen() {
+  const navigation = useNavigation<MarketNav>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadMarkets();
-  }, []);
+  const markets = useMarketStore((state) => state.markets);
+  const isLoading = useMarketStore((state) => state.isLoading);
+  const error = useMarketStore((state) => state.error);
+  const fetchMarkets = useMarketStore((state) => state.fetchMarkets);
 
-  const filteredMarkets = markets.filter((m) => {
-    const matchesCategory = selectedCategory === "All" || m.category === selectedCategory;
-    const matchesSearch = m.title.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const filteredMarkets = useMemo(() => {
+    let result = markets;
+    if (activeCategory !== "All") {
+      result = result.filter((m) => m.category?.toLowerCase() === activeCategory.toLowerCase());
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((m) => m.title.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q));
+    }
+    return result;
+  }, [markets, activeCategory, searchQuery]);
 
-  const featuredMarket = markets.length > 0 ? markets[0] : null;
-  const trendingMarkets = markets.slice(1, 5);
-  const watchlistMarkets = markets.filter((m) => watchlist.includes(m.id));
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchMarkets().finally(() => setRefreshing(false));
+  }, [fetchMarkets]);
+
+  const handleMarketPress = useCallback((marketId: string) => { navigation.navigate("MarketDetail", { marketId }); }, [navigation]);
+  const handleTradePress = useCallback((marketId: string) => { navigation.navigate("Trade", { marketId }); }, [navigation]);
+
+  if (isLoading && markets.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <ActivityIndicator size="large" color={colors.primary.base} />
+      </SafeAreaView>
+    );
+  }
+
+  if (error && markets.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <Pressable onPress={fetchMarkets} style={styles.retryButton} accessibilityRole="button">
+          <Text style={styles.retryText}>Retry</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Markets</Text>
-        <Pressable
-          onPress={() => (navigation as any).navigate("Watchlist")}
-          accessibilityRole="button"
-          accessibilityLabel="Go to Watchlist"
-        >
-          <Text style={styles.watchIcon}>⭐</Text>
-        </Pressable>
+        <Text style={styles.headerTitle}>Markets</Text>
       </View>
 
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
           placeholder="Search markets..."
-          placeholderTextColor="#888"
+          placeholderTextColor={colors.neutral[400]}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          accessibilityRole="search"
+          accessibilityLabel="Search markets"
         />
       </View>
 
-      <MarketCategoryPill
-        categories={categories}
-        selected={selectedCategory}
-        onSelect={setSelectedCategory}
+      <FlatList
+        horizontal
+        data={CATEGORIES}
+        keyExtractor={(item) => item}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoryList}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => setActiveCategory(item)}
+            style={[styles.categoryPill, activeCategory === item && styles.categoryPillActive]}
+            accessibilityRole="button"
+            accessibilityLabel={`Filter by ${item}`}
+            accessibilityState={{ selected: activeCategory === item }}
+          >
+            <Text style={[styles.categoryText, activeCategory === item && styles.categoryTextActive]}>{item}</Text>
+          </Pressable>
+        )}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {watchlistMarkets.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Your Watchlist</Text>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={watchlistMarkets}
-              renderItem={({ item }) => <MarketCard market={item} compact />}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.horizontalList}
-            />
-          </View>
+      <FlatList
+        data={filteredMarkets}
+        keyExtractor={(item) => item.id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.marketList}
+        renderItem={({ item }) => (
+          <MarketCard
+            market={item}
+            onPress={() => handleMarketPress(item.id)}
+            onTradePress={() => handleTradePress(item.id)}
+          />
         )}
-
-        {featuredMarket && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Featured</Text>
-            <MarketCard market={featuredMarket} featured />
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyEmoji}>📉</Text>
+            <Text style={styles.emptyTitle}>No markets found</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery ? `No results for "${searchQuery}"` : "Check back later for new markets."}
+            </Text>
           </View>
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Trending</Text>
-          {trendingMarkets.map((market) => (
-            <MarketCard key={market.id} market={market} compact />
-          ))}
-        </View>
-      </ScrollView>
+        }
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FAFAFA" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  title: { fontSize: 28, fontWeight: "800", color: "#1A1A1A" },
-  watchIcon: { fontSize: 24 },
-  searchContainer: {
-    paddingHorizontal: 16,
-    marginVertical: 8,
-  },
-  searchInput: {
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    paddingHorizontal: 16,
-    fontSize: 16,
-    backgroundColor: "#fff",
-    color: "#1A1A1A",
-  },
-  content: { paddingBottom: 80 },
-  section: { paddingHorizontal: 16, marginVertical: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1A1A1A", marginBottom: 8 },
-  horizontalList: { paddingRight: 16 },
+  container: { flex: 1, backgroundColor: colors.neutral[50] },
+  header: { paddingHorizontal: spacing[4], paddingVertical: spacing[3] },
+  headerTitle: { fontSize: typography.sizes["2xl"], fontWeight: typography.weights.bold, color: colors.neutral[900] },
+  searchContainer: { paddingHorizontal: spacing[4], marginBottom: spacing[2] },
+  searchInput: { backgroundColor: colors.neutral[100], borderRadius: 99, paddingHorizontal: spacing[4], paddingVertical: spacing[2], fontSize: typography.sizes.base, color: colors.neutral[900], borderWidth: 1, borderColor: colors.neutral[200] },
+  categoryList: { paddingHorizontal: spacing[4], gap: spacing[2] },
+  categoryPill: { paddingHorizontal: spacing[3], paddingVertical: spacing[2], borderRadius: 99, borderWidth: 1, borderColor: colors.neutral[200], backgroundColor: colors.neutral[0] },
+  categoryPillActive: { backgroundColor: colors.primary.base, borderColor: colors.primary.base },
+  categoryText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, color: colors.neutral[500] },
+  categoryTextActive: { color: colors.neutral[0], fontWeight: typography.weights.bold },
+  marketList: { padding: spacing[4] },
+  empty: { alignItems: "center", paddingTop: spacing[10] },
+  emptyEmoji: { fontSize: 48, marginBottom: spacing[3] },
+  emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.neutral[900], marginBottom: spacing[2] },
+  emptyText: { fontSize: typography.sizes.base, color: colors.neutral[500], textAlign: "center" },
+  errorText: { fontSize: typography.sizes.base, color: colors.neutral[900], textAlign: "center", marginTop: spacing[4] },
+  retryButton: { backgroundColor: colors.primary.base, paddingHorizontal: spacing[6], paddingVertical: spacing[3], borderRadius: 99, alignSelf: "center", marginTop: spacing[4] },
+  retryText: { color: colors.neutral[0], fontWeight: typography.weights.bold },
 });

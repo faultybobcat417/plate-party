@@ -17,7 +17,7 @@ const CATEGORIES = ["All", "Technology", "Finance", "Sports", "Climate", "Politi
 
 export default function MarketHome() {
   const navigation = useNavigation();
-  const { markets, loadMarkets } = useMarketStore();
+  const { markets, loadMarkets, loading } = useMarketStore();
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -70,6 +70,7 @@ export default function MarketHome() {
         {item.description}
       </Text>
 
+      {/* Progress bar */}
       <View
         style={{
           height: 8,
@@ -146,6 +147,7 @@ export default function MarketHome() {
           Markets
         </Text>
 
+        {/* Search */}
         <TextInput
           placeholder="Search markets..."
           placeholderTextColor={colors.neutral[400]}
@@ -161,46 +163,43 @@ export default function MarketHome() {
           }}
         />
 
-        {/* Category Filter — FIXED: row layout, no stretch */}
-        <View style={{ height: 40, marginBottom: spacing[2] }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ flexDirection: "row", alignItems: "center" }}
-          >
-            {CATEGORIES.map((cat) => {
-              const isActive = activeCategory === cat;
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setActiveCategory(cat)}
-                  activeOpacity={0.7}
+        {/* Category Filter — FIXED: proper horizontal scroll with fixed-size pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: spacing[2], gap: spacing[2] }}
+        >
+          {CATEGORIES.map((cat) => {
+            const isActive = activeCategory === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => setActiveCategory(cat)}
+                activeOpacity={0.7}
+                style={{
+                  paddingHorizontal: spacing[4],
+                  paddingVertical: spacing[2],
+                  borderRadius: 20,
+                  backgroundColor: isActive ? colors.primary.base : colors.neutral[0],
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.primary.base : colors.neutral[200],
+                  alignSelf: "flex-start",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
                   style={{
-                    paddingHorizontal: spacing[4],
-                    paddingVertical: spacing[2],
-                    borderRadius: 20,
-                    backgroundColor: isActive ? colors.primary.base : colors.neutral[0],
-                    borderWidth: 1,
-                    borderColor: isActive ? colors.primary.base : colors.neutral[200],
-                    marginRight: spacing[2],
-                    height: 36,
-                    justifyContent: "center",
+                    fontSize: typography.sizes.sm,
+                    fontWeight: isActive ? typography.weights.bold : typography.weights.medium,
+                    color: isActive ? colors.neutral[0] : colors.neutral[600],
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: typography.sizes.sm,
-                      fontWeight: isActive ? typography.weights.bold : typography.weights.medium,
-                      color: isActive ? colors.neutral[0] : colors.neutral[600],
-                    }}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       <FlatList
@@ -209,7 +208,7 @@ export default function MarketHome() {
         renderItem={renderMarket}
         contentContainerStyle={{ padding: spacing[4], paddingTop: spacing[2] }}
         refreshControl={
-          <RefreshControl refreshing={false} onRefresh={() => void loadMarkets()} tintColor={colors.primary.base} />
+          <RefreshControl refreshing={loading} onRefresh={() => void loadMarkets()} tintColor={colors.primary.base} />
         }
         ListEmptyComponent={
           <View style={{ alignItems: "center", paddingTop: spacing[10] }}>

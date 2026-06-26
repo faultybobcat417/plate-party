@@ -5,10 +5,11 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { colors, typography, spacing } from "../../theme";
 
 interface StakeCardProps {
-  stake?: {
+  stake: {
     id: string;
     title: string;
     creator: string;
@@ -18,20 +19,17 @@ interface StakeCardProps {
     totalPlates: number;
     plateReward: number;
   };
-  post?: any;
-  onStake?: (index: number) => void;
-  onPress?: () => void;
 }
 
-export default function StakeCard({ stake, post, onStake, onPress }: StakeCardProps) {
-  const data = stake || post || {};
+export default function StakeCard({ stake }: StakeCardProps) {
+  const navigation = useNavigation();
 
   const handleAttempt = () => {
-    if (onPress) {
-      onPress();
-    } else if (onStake) {
-      onStake(0);
-    }
+    (navigation as any).navigate("EnterStake", {
+      stakeId: stake.id,
+      title: stake.title,
+      creator: stake.creatorName || stake.creator || "Anonymous",
+    });
   };
 
   return (
@@ -39,26 +37,26 @@ export default function StakeCard({ stake, post, onStake, onPress }: StakeCardPr
       <View style={styles.header}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {(data.creatorName || data.creator || data.author || "?").charAt(0).toUpperCase()}
+            {(stake.creatorName || stake.creator || "?").charAt(0).toUpperCase()}
           </Text>
         </View>
         <View style={styles.meta}>
-          <Text style={styles.creator}>{data.creatorName || data.creator || data.author || "Anonymous"}</Text>
-          <Text style={styles.date}>{data.date || data.createdAt || "Recently"}</Text>
+          <Text style={styles.creator}>{stake.creatorName || stake.creator}</Text>
+          <Text style={styles.date}>{stake.date}</Text>
         </View>
         <View style={styles.rewardBadge}>
-          <Text style={styles.rewardText}>🍽 {data.plateReward || data.stakePlates || data.plates || 0}</Text>
+          <Text style={styles.rewardText}>🍽 {stake.plateReward}</Text>
         </View>
       </View>
 
-      <Text style={styles.title}>{data.title || data.question || "Untitled Stake"}</Text>
+      <Text style={styles.title}>{stake.title}</Text>
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          {data.entries || 0} {data.entries === 1 ? "entry" : "entries"}
+          {stake.entries} {stake.entries === 1 ? "entry" : "entries"}
         </Text>
-        <Text style={styles.footerText}>{data.totalPlates || data.plates || 0} plates total</Text>
-        <TouchableOpacity style={styles.attemptBtn} onPress={handleAttempt} activeOpacity={0.7}>
+        <Text style={styles.footerText}>{stake.totalPlates} plates total</Text>
+        <TouchableOpacity style={styles.attemptBtn} onPress={handleAttempt}>
           <Text style={styles.attemptText}>Attempt</Text>
         </TouchableOpacity>
       </View>

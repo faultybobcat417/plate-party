@@ -54,7 +54,7 @@ export function RealMoneySettleScreen({ route }: Props) {
   const [reference, setReference] = useState("");
 
   useEffect(() => {
-    void loadPartyMembers(partyId);
+    void loadPartyMembers(partyId!);
     void (async () => {
       const id = await getCurrentUserId();
       setCurrentUserId(id);
@@ -79,7 +79,7 @@ export function RealMoneySettleScreen({ route }: Props) {
     const newIou: LocalIou = {
       id: `${Date.now()}`,
       fromUserId: currentUserId,
-      toUserId: otherUserId,
+      toUserId: otherUserId!,
       dollarAmountCents: Math.round(dollars * 100),
       paymentProvider: provider,
       externalPaymentRef: reference.trim() || "Manual settlement",

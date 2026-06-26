@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 
 interface StakePost {
   id: string;
@@ -14,12 +15,11 @@ interface StakePost {
 }
 
 export function SteakFeedList() {
+  const navigation = useNavigation();
   const [posts, setPosts] = useState<StakePost[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadPosts = async () => {
-    // TODO: Replace with actual DB query from stake_posts + stake_entries
-    // For now, demo data so the feed is never empty on first load
     const demoPosts: StakePost[] = [
       { id: "1", userId: "u1", userName: "Alex", title: "Run 5K this week", stake: 50, entries: 3, totalPlates: 150, createdAt: "2026-06-24", expiresAt: "2026-07-01" },
       { id: "2", userId: "u2", userName: "Sam", title: "Read 1 book this month", stake: 100, entries: 1, totalPlates: 100, createdAt: "2026-06-23", expiresAt: "2026-07-23" },
@@ -40,6 +40,14 @@ export function SteakFeedList() {
     setRefreshing(false);
   };
 
+  const handleAttempt = (item: StakePost) => {
+    (navigation as any).navigate("EnterStake", {
+      stakeId: item.id,
+      title: item.title,
+      creator: item.userName,
+    });
+  };
+
   const renderItem = ({ item }: { item: StakePost }) => (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -58,6 +66,7 @@ export function SteakFeedList() {
         <Text style={styles.total}>{item.totalPlates} plates total</Text>
         <Pressable
           style={styles.joinBtn}
+          onPress={() => handleAttempt(item)}
           accessibilityRole="button"
           accessibilityLabel={`Attempt stake ${item.title}`}
         >

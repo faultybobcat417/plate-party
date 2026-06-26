@@ -1,179 +1,95 @@
-import { loadProfile } from "../utils/profileStorage";
+import { eq, and, sql } from "drizzle-orm";
+import { getDb } from "../db/connection";
+import { wagers, wagerOptions, bets } from "../db/schema";
 
-export type MarketCategory = "sports" | "politics" | "crypto" | "weather" | "memes";
-
-export type MarketOutcome = "yes" | "no";
-
-export type Market = {
+export interface Market {
   id: string;
   title: string;
-  category: MarketCategory;
   description: string;
-  yesPrice: number; // 0-100 (cents per share)
-  noPrice: number; // 0-100
-  volume: number; // total plates traded
-  expiresAt: string;
-  resolved: boolean;
-  resolutionOutcome: MarketOutcome | null;
+  category?: string;
+  yesPrice: number;
+  noPrice: number;
+  volume: number;
+  endDate?: string;
   imageUrl?: string;
-};
-
-export type Trade = {
-  id: string;
-  marketId: string;
-  userId: string;
-  outcome: MarketOutcome;
-  plates: number;
-  dollars: number | null;
-  price: number; // price at time of trade
-  createdAt: string;
-};
-
-export type PlaceTradeInput = {
-  marketId: string;
-  outcome: MarketOutcome;
-  plates: number;
-  dollars: number | null;
-};
-
-const MOCK_MARKETS: Market[] = [
-  {
-    id: "mkt-1",
-    title: "Raptors win NBA Championship 2026",
-    category: "sports",
-    description: "Will the Toronto Raptors win the 2026 NBA Finals?",
-    yesPrice: 12,
-    noPrice: 88,
-    volume: 2450,
-    expiresAt: "2026-06-30T23:59:59Z",
-    resolved: false,
-    resolutionOutcome: null,
-    imageUrl: "🏀",
-  },
-  {
-    id: "mkt-2",
-    title: "BTC hits $200K before July",
-    category: "crypto",
-    description: "Will Bitcoin reach $200,000 USD on any exchange before July 1, 2026?",
-    yesPrice: 34,
-    noPrice: 66,
-    volume: 18900,
-    expiresAt: "2026-07-01T00:00:00Z",
-    resolved: false,
-    resolutionOutcome: null,
-    imageUrl: "₿",
-  },
-  {
-    id: "mkt-3",
-    title: "It rains on Canada Day in Toronto",
-    category: "weather",
-    description: "Will there be measurable precipitation in Toronto on July 1, 2026?",
-    yesPrice: 55,
-    noPrice: 45,
-    volume: 890,
-    expiresAt: "2026-07-01T23:59:59Z",
-    resolved: false,
-    resolutionOutcome: null,
-    imageUrl: "🌧️",
-  },
-  {
-    id: "mkt-4",
-    title: "Federal election called before fall",
-    category: "politics",
-    description: "Will a federal election be called in Canada before September 2026?",
-    yesPrice: 62,
-    noPrice: 38,
-    volume: 4200,
-    expiresAt: "2026-09-01T00:00:00Z",
-    resolved: false,
-    resolutionOutcome: null,
-    imageUrl: "🏛️",
-  },
-  {
-    id: "mkt-5",
-    title: "Pepe coin flips Dogecoin market cap",
-    category: "memes",
-    description: "Will PEPE overtake DOGE in market capitalization for at least one day?",
-    yesPrice: 18,
-    noPrice: 82,
-    volume: 5600,
-    expiresAt: "2026-08-01T00:00:00Z",
-    resolved: false,
-    resolutionOutcome: null,
-    imageUrl: "🐸",
-  },
-];
-
-export async function listMarkets(category?: MarketCategory): Promise<Market[]> {
-  // TODO: wire to SQLite when ready
-  if (category) {
-    return MOCK_MARKETS.filter((m) => m.category === category);
-  }
-  return MOCK_MARKETS;
+  creatorId?: string;
+  createdAt?: string;
+  status?: "open" | "closed" | "resolved";
+  resolution?: "yes" | "no" | null;
 }
 
-export async function getMarket(id: string): Promise<Market | null> {
-  return MOCK_MARKETS.find((m) => m.id === id) ?? null;
+export interface MarketDetail extends Market {
+  relatedMarkets: Market[];
+  priceHistory: Array<{ date: string; yesPrice: number; noPrice: number }>;
+  totalVolume: number;
+  liquidity: number;
+  spread: number;
 }
 
-export async function placeTrade(input: PlaceTradeInput): Promise<Trade> {
-  // TODO: wire to SQLite + ledger when ready
-  if (!input.marketId) {
-    throw new Error("Market is required.");
-  }
-  if (input.plates <= 0 || !Number.isFinite(input.plates)) {
-    throw new Error("Plate amount must be a positive number.");
-  }
-  if (input.dollars !== null && (input.dollars < 0 || !Number.isFinite(input.dollars))) {
-    throw new Error("Dollar amount must be non-negative.");
-  }
+export type MarketCategory =
+  | "technology"
+  | "finance"
+  | "sports"
+  | "climate"
+  | "politics"
+  | "entertainment"
+  | "science"
+  | "default";
 
-  const market = await getMarket(input.marketId);
-  if (!market) {
-    throw new Error("Market not found.");
-  }
-
-  const price = input.outcome === "yes" ? market.yesPrice : market.noPrice;
-  if (price <= 0) {
-    throw new Error("Market price must be greater than zero.");
-  }
-
-  const profile = await loadProfile();
-  const userId = profile?.id ?? "user-1";
-
-  const trade: Trade = {
-    id: `trade-${Date.now()}`,
-    marketId: input.marketId,
-    userId,
-    outcome: input.outcome,
-    plates: input.plates,
-    dollars: input.dollars,
-    price,
-    createdAt: new Date().toISOString(),
+export function getCategoryEmoji(category?: string): string {
+  const map: Record<string, string> = {
+    technology: "💻", finance: "💰", sports: "🏆", climate: "🌍",
+    politics: "🏛️", entertainment: "🎬", science: "🔬",
   };
-
-  market.volume += input.plates;
-  return trade;
+  return map[category?.toLowerCase() || ""] || "📊";
 }
 
-export function getCategoryLabel(category: MarketCategory): string {
-  const labels: Record<MarketCategory, string> = {
-    sports: "Sports",
-    politics: "Politics",
-    crypto: "Crypto",
-    weather: "Weather",
-    memes: "Memes",
-  };
-  return labels[category];
+export function getCategoryLabel(category?: string): string {
+  return (category ? category.charAt(0).toUpperCase() + category.slice(1) : "General");
 }
 
-export function getCategoryEmoji(category: MarketCategory): string {
-  const emojis: Record<MarketCategory, string> = {
-    sports: "🏈",
-    politics: "🏛️",
-    crypto: "₿",
-    weather: "🌤️",
-    memes: "🐸",
+export async function fetchMarketsFromDb(): Promise<Market[]> {
+  const db = await getDb();
+  const wagerRows = await db.select().from(wagers).where(and(eq(wagers.status, "open"), sql`${wagers.deletedAt} is null`));
+  const markets: Market[] = [];
+
+  for (const wager of wagerRows) {
+    const options = await db.select().from(wagerOptions).where(eq(wagerOptions.wagerId, wager.id));
+    const betsForWager = await db.select().from(bets).where(eq(bets.wagerId, wager.id));
+    const totalVolume = betsForWager.reduce((sum, b) => sum + b.platesWagered, 0);
+    const yesOption = options.find((o) => o.label.toLowerCase() === "yes");
+    const noOption = options.find((o) => o.label.toLowerCase() === "no");
+    const yesPrice = yesOption ? Math.min((yesOption.sortOrder + 1) * 0.1, 0.99) : 0.5;
+    const noPrice = noOption ? Math.min((noOption.sortOrder + 1) * 0.1, 0.99) : 0.5;
+
+    markets.push({
+      id: wager.id, title: wager.question, description: "", category: undefined,
+      yesPrice, noPrice, volume: totalVolume, endDate: wager.deadline,
+      creatorId: wager.createdByUserId, createdAt: wager.createdAt,
+      status: wager.status === "open" ? "open" : "closed", resolution: null,
+    });
+  }
+  return markets;
+}
+
+export async function fetchMarketByIdFromDb(id: string): Promise<MarketDetail> {
+  const db = await getDb();
+  const [wager] = await db.select().from(wagers).where(eq(wagers.id, id)).limit(1);
+  if (!wager) throw new Error(`Market ${id} not found`);
+
+  const options = await db.select().from(wagerOptions).where(eq(wagerOptions.wagerId, wager.id));
+  const betsForWager = await db.select().from(bets).where(eq(bets.wagerId, wager.id));
+  const totalVolume = betsForWager.reduce((sum, b) => sum + b.platesWagered, 0);
+  const yesOption = options.find((o) => o.label.toLowerCase() === "yes");
+  const noOption = options.find((o) => o.label.toLowerCase() === "no");
+  const yesPrice = yesOption ? Math.min((yesOption.sortOrder + 1) * 0.1, 0.99) : 0.5;
+  const noPrice = noOption ? Math.min((noOption.sortOrder + 1) * 0.1, 0.99) : 0.5;
+
+  return {
+    id: wager.id, title: wager.question, description: "", category: undefined,
+    yesPrice, noPrice, volume: totalVolume, endDate: wager.deadline,
+    creatorId: wager.createdByUserId, createdAt: wager.createdAt,
+    status: wager.status === "open" ? "open" : "closed", resolution: null,
+    relatedMarkets: [], priceHistory: [], totalVolume, liquidity: 1000, spread: 0.1,
   };
-  return emojis[category];
 }

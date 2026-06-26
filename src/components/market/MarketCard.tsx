@@ -1,93 +1,185 @@
 import React from "react";
-import { View, Text, Image, Pressable, StyleSheet } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { useMarketStore, type Market } from "../../stores/useMarketStore";
-import { PriceBar } from "./PriceBar";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+} from "react-native";
+import { colors, spacing, typography } from "../../theme";
+import type { Market } from "../../stores/useMarketStore";
 
 interface MarketCardProps {
   market: Market;
-  featured?: boolean;
+  onPress?: () => void;
+  onTradePress?: () => void;
   compact?: boolean;
 }
 
-export function MarketCard({ market, featured = false, compact = false }: MarketCardProps) {
-  const navigation = useNavigation();
-
-  const handlePress = () => {
-    (navigation.navigate as any)("MarketDetail", { marketId: market.id });
-  };
-
-  if (compact) {
-    return (
-      <Pressable
-        style={[styles.compactContainer, { width: 280 }]}
-        onPress={handlePress}
-      >
-        <Image source={{ uri: market.imageUrl }} style={styles.compactImage} />
-        <View style={styles.compactContent}>
-          <Text style={styles.compactTitle} numberOfLines={2}>{market.title}</Text>
-          <PriceBar yesPrice={market.yesPrice} noPrice={market.noPrice} small />
-          <Text style={styles.compactVol}>Vol: ${market.volume.toLocaleString()}</Text>
-        </View>
-      </Pressable>
-    );
-  }
+export function MarketCard({ market, onPress, onTradePress, compact }: MarketCardProps) {
+  const yesPercent = Math.min(Math.round(market.yesPrice * 100), 99);
+  const noPercent = 100 - yesPercent;
 
   return (
     <Pressable
-      style={[styles.container, { padding: featured ? 16 : 12 }]}
-      onPress={handlePress}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        compact && styles.cardCompact,
+        pressed && styles.cardPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={`${market.title}, ${yesPercent} percent yes`}
     >
-      <Image
-        source={{ uri: market.imageUrl }}
-        style={[styles.image, featured && styles.featuredImage]}
-      />
-      <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={2}>{market.title}</Text>
-        <View style={styles.meta}>
-          <Text style={styles.metaText}>{market.category}</Text>
-          <Text style={styles.metaText}>Ends {market.endDate ? new Date(market.endDate).toLocaleDateString() : "No end date"}</Text>
+      <Text style={styles.title} numberOfLines={2}>
+        {market.title}
+      </Text>
+
+      {market.description ? (
+        <Text style={styles.description} numberOfLines={2}>
+          {market.description}
+        </Text>
+      ) : null}
+
+      {/* Price Bar */}
+      <View style={styles.oddsBarContainer}>
+        <View style={styles.oddsBar}>
+          <View style={[styles.oddsYes, { flex: yesPercent / 100 }]} />
+          <View style={[styles.oddsNo, { flex: noPercent / 100 }]} />
         </View>
-        <PriceBar yesPrice={market.yesPrice} noPrice={market.noPrice} />
-        <View style={styles.stats}>
-          <Text style={styles.statText}>Vol: ${market.volume.toLocaleString()}</Text>
-          <Text style={styles.statText}>Liq: ${(market as any).liquidity?.toLocaleString() ?? "0"}</Text>
+        <View style={styles.oddsLabels}>
+          <Text style={styles.oddsYesLabel}>Yes {yesPercent}%</Text>
+          <Text style={styles.oddsNoLabel}>No {noPercent}%</Text>
         </View>
+      </View>
+
+      <View style={styles.footer}>
+        <View style={styles.categoryBadge}>
+          <Text style={styles.categoryText}>
+            {market.category?.toUpperCase() || "MARKET"}
+          </Text>
+        </View>
+        <Text style={styles.volume}>
+          Vol: {market.volume.toLocaleString()} plates
+        </Text>
+        {onTradePress ? (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              onTradePress();
+            }}
+            style={styles.tradeButton}
+            accessibilityRole="button"
+            accessibilityLabel="Trade this market"
+          >
+            <Text style={styles.tradeButtonText}>Trade</Text>
+          </Pressable>
+        ) : null}
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#fff",
+  card: {
+    backgroundColor: colors.neutral[0],
     borderRadius: 16,
+    padding: spacing[4],
+    marginBottom: spacing[3],
     borderWidth: 1,
-    borderColor: "#E0E0E0",
-    marginBottom: 12,
-    overflow: "hidden",
+    borderColor: colors.neutral[100],
+    ...theme.shadows.md,
   },
-  image: { width: "100%", height: 120 },
-  featuredImage: { height: 180 },
-  content: { padding: 12 },
-  title: { fontSize: 16, fontWeight: "600", color: "#1A1A1A", marginBottom: 4 },
-  meta: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  metaText: { color: "#888", fontSize: 12 },
-  stats: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
-  statText: { color: "#888", fontSize: 12 },
-  compactContainer: {
+  cardCompact: {
+    padding: spacing[3],
+  },
+  cardPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.95,
+  },
+  title: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+    color: colors.neutral[900],
+    lineHeight: typography.lineHeights.lg,
+    marginBottom: spacing[1],
+  },
+  description: {
+    fontSize: typography.sizes.base,
+    color: colors.neutral[500],
+    lineHeight: typography.lineHeights.base,
+    marginBottom: spacing[3],
+  },
+  oddsBarContainer: {
+    marginBottom: spacing[3],
+  },
+  oddsBar: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    marginBottom: 8,
-    padding: 10,
-    alignItems: "center",
-    marginRight: 12,
+    height: 8,
+    borderRadius: 99,
+    overflow: "hidden",
+    backgroundColor: colors.neutral[200],
   },
-  compactImage: { width: 60, height: 60, borderRadius: 8, marginRight: 10 },
-  compactContent: { flex: 1 },
-  compactTitle: { fontSize: 14, fontWeight: "500", color: "#1A1A1A", marginBottom: 2 },
-  compactVol: { color: "#888", fontSize: 11, marginTop: 2 },
+  oddsYes: {
+    backgroundColor: colors.primary.base,
+    borderTopLeftRadius: 99,
+    borderBottomLeftRadius: 99,
+  },
+  oddsNo: {
+    backgroundColor: colors.neutral[300],
+    borderTopRightRadius: 99,
+    borderBottomRightRadius: 99,
+  },
+  oddsLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: spacing[1],
+  },
+  oddsYesLabel: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary.base,
+  },
+  oddsNoLabel: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold,
+    color: colors.neutral[400],
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: spacing[2],
+  },
+  categoryBadge: {
+    backgroundColor: colors.primary.subtle,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: 99,
+  },
+  categoryText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold,
+    color: colors.primary.base,
+    letterSpacing: 0.5,
+  },
+  volume: {
+    fontSize: typography.sizes.xs,
+    color: colors.neutral[400],
+    flex: 1,
+    textAlign: "center",
+  },
+  tradeButton: {
+    backgroundColor: colors.primary.base,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    borderRadius: 99,
+    ...theme.shadows.sm,
+  },
+  tradeButtonText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+    color: colors.neutral[0],
+  },
 });
+
+import { theme } from "../../theme";

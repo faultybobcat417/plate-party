@@ -1,17 +1,24 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated, TouchableOpacity } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import React, { useEffect, useRef } from "react";
+import { Animated, Text, StyleSheet } from "react-native";
+import { colors, spacing, typography } from "../../theme";
 
-export type ToastVariant = 'success' | 'error' | 'info';
+export type ToastType = "success" | "error" | "info" | "warning";
 
 interface ToastProps {
   message: string;
-  variant: ToastVariant;
+  type?: ToastType;
   duration?: number;
-  onDismiss: () => void;
+  onDismiss?: () => void;
 }
 
-export function Toast({ message, variant, duration = 3000, onDismiss }: ToastProps) {
+const typeStyles: Record<ToastType, { bg: string; border: string; text: string }> = {
+  success: { bg: colors.semantic.successBg, border: colors.semantic.success, text: colors.semantic.success },
+  error: { bg: colors.semantic.errorBg, border: colors.semantic.error, text: colors.semantic.error },
+  info: { bg: colors.semantic.infoBg, border: colors.semantic.info, text: colors.semantic.info },
+  warning: { bg: colors.semantic.warningBg, border: colors.semantic.warning, text: colors.semantic.warning },
+};
+
+export function Toast({ message, type = "info", duration = 3000, onDismiss }: ToastProps) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-20)).current;
 
@@ -25,51 +32,47 @@ export function Toast({ message, variant, duration = 3000, onDismiss }: ToastPro
       Animated.parallel([
         Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
         Animated.timing(translateY, { toValue: -20, duration: 300, useNativeDriver: true }),
-      ]).start(() => onDismiss());
+      ]).start(() => onDismiss?.());
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [duration, onDismiss, opacity, translateY]);
+  }, []);
 
-  const backgroundColor =
-    variant === 'success' ? colors.win :
-    variant === 'error' ? colors.lose :
-    colors.gold;
-
-  const icon =
-    variant === 'success' ? '✅' :
-    variant === 'error' ? '❌' :
-    'ℹ️';
+  const styles = typeStyles[type];
 
   return (
     <Animated.View
-      style={{
-        position: 'absolute',
-        top: 40,
-        left: spacing[3],
-        right: spacing[3],
-        opacity,
-        transform: [{ translateY }],
-        backgroundColor,
-        borderRadius: 8,
-        padding: spacing[3],
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      }}
+      style={[
+        containerStyle.container,
+        {
+          opacity,
+          transform: [{ translateY }],
+          backgroundColor: styles.bg,
+          borderColor: styles.border,
+        },
+      ]}
+      accessibilityRole="alert"
+      accessibilityLabel={message}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-        <Text style={{ fontSize: 20, marginRight: spacing[2] }}>{icon}</Text>
-        <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.normal, lineHeight: typography.lineHeights.normal, color: '#FFFFFF', flex: 1 }}>{message}</Text>
-      </View>
-      <TouchableOpacity onPress={onDismiss} accessibilityRole="button" accessibilityLabel="Dismiss">
-        <Text style={{ color: '#FFFFFF', fontSize: 18 }}>✕</Text>
-      </TouchableOpacity>
+      <Text style={[containerStyle.text, { color: styles.text }]}>{message}</Text>
     </Animated.View>
   );
 }
+
+const containerStyle = StyleSheet.create({
+  container: {
+    position: "absolute",
+    top: 60,
+    left: 16,
+    right: 16,
+    padding: spacing[3],
+    borderRadius: 12,
+    borderWidth: 1,
+    zIndex: 1000,
+    alignItems: "center",
+  },
+  text: {
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.medium,
+  },
+});

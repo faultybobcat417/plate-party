@@ -1,103 +1,79 @@
-export const colors = {
-  ink: {
-    900: "#0D0D0D",
-    800: "#1A1A1A",
-    700: "#262626",
-    600: "#333333",
-    500: "#404040",
-    400: "#666666",
-    300: "#999999",
-    200: "#CCCCCC",
-    100: "#E6E6E6",
-    50: "#F2F2F2",
+import { Platform } from "react-native";
+
+const palette = {
+  purple: {
+    50: "#F5F3FF", 100: "#EDE9FE", 200: "#DDD6FE", 300: "#C4B5FD",
+    400: "#A78BFA", 500: "#8B5CF6", 600: "#7C3AED", 700: "#6D28D9",
+    800: "#5B21B6", 900: "#4C1D95", 950: "#2E1065",
   },
-  linen: {
-    900: "#8C7B6B",
-    800: "#A89482",
-    700: "#C4B09A",
-    600: "#D9C5B0",
-    500: "#EDD9C4",
-    400: "#F2E4D6",
-    300: "#F7EFE6",
-    200: "#FBF7F2",
-    100: "#FDFBF9",
-    50: "#FFFEFD",
+  gray: {
+    0: "#FFFFFF", 50: "#FCFAFF", 100: "#F5F3F7", 200: "#E5E1EB",
+    300: "#D1CBD7", 400: "#A89FB0", 500: "#6B6478", 600: "#504A5C",
+    700: "#3A3544", 800: "#252230", 900: "#0F0C19", 950: "#080610",
   },
-  glaze: {
-    900: "#1E3A4C",
-    800: "#26536B",
-    700: "#2E6D8A",
-    600: "#3A87A8",
-    500: "#4FA3C4",
-    400: "#76BDD9",
-    300: "#9DD3E8",
-    200: "#C4E7F4",
-    100: "#E3F4FB",
-    50: "#F3FAFD",
-  },
-  mustard: {
-    900: "#7A5C0E",
-    800: "#9C7A12",
-    700: "#BD9816",
-    600: "#DDB51E",
-    500: "#F0C92E",
-    400: "#F4D85E",
-    300: "#F7E48E",
-    200: "#FAEFBB",
-    100: "#FCF7DC",
-    50: "#FEFCF2",
-  },
-  ash: {
-    900: "#3D3D3D",
-    800: "#525252",
-    700: "#696969",
-    600: "#808080",
-    500: "#999999",
-    400: "#B3B3B3",
-    300: "#CCCCCC",
-    200: "#E0E0E0",
-    100: "#F0F0F0",
-    50: "#FAFAFA",
-  },
-  wine: {
-    900: "#4A0D18",
-    800: "#6B1322",
-    700: "#8C1A2D",
-    600: "#AD2338",
-    500: "#CC2E44",
-    400: "#DC5A6B",
-    300: "#EA8A98",
-    200: "#F4BAC2",
-    100: "#FBE2E5",
-    50: "#FDF2F4",
-  },
-  clay: {
-    900: "#5C3A2A",
-    800: "#7A4E39",
-    700: "#99634A",
-    600: "#B87B5F",
-    500: "#D4977A",
-    400: "#E0B29B",
-    300: "#EBCCBC",
-    200: "#F3E2D8",
-    100: "#F9F1EC",
-    50: "#FDFAF8",
-  },
-  iron: {
-    900: "#2A2D33",
-    800: "#3A3F47",
-    700: "#4B515C",
-    600: "#5E6571",
-    500: "#737A87",
-    400: "#9299A5",
-    300: "#B1B7C1",
-    200: "#D1D5DB",
-    100: "#E9EBEE",
-    50: "#F6F7F8",
-  },
-  win: "#22C55E",
-  lose: "#EF4444",
-  gold: "#F59E0B",
+  success: "#10B981", error: "#EF4444", warning: "#F59E0B", info: "#3B82F6",
+  plate: "#F59E0B", impact: "#34D399",
 } as const;
 
-export type ColorPalette = typeof colors;
+export const primary = {
+  base: palette.purple[600], dark: palette.purple[700], darker: palette.purple[800],
+  light: palette.purple[100], subtle: palette.purple[200],
+  gradient: [palette.purple[600], palette.purple[700]] as const,
+} as const;
+
+export const neutral = {
+  0: palette.gray[0], 50: palette.gray[50], 100: palette.gray[100], 200: palette.gray[200],
+  300: palette.gray[300], 400: palette.gray[400], 500: palette.gray[500], 600: palette.gray[600],
+  700: palette.gray[700], 800: palette.gray[800], 900: palette.gray[900], 950: palette.gray[950],
+} as const;
+
+export const semantic = {
+  success: palette.success, error: palette.error, warning: palette.warning, info: palette.info,
+  successBg: "#D1FAE5", errorBg: "#FEE2E2", warningBg: "#FEF3C7", infoBg: "#DBEAFE",
+} as const;
+
+export const charity = { plate: palette.plate, impact: palette.impact } as const;
+
+// ── BACKWARD-COMPATIBLE ALIASES ──
+export const ink = {
+  50: neutral[50], 100: neutral[100], 200: neutral[200], 300: neutral[300],
+  400: neutral[400], 500: neutral[500], 600: neutral[600], 700: neutral[700],
+  800: neutral[800], 900: neutral[900], 950: neutral[950],
+} as const;
+
+export const glaze = {
+  50: primary.light, 100: primary.light, 200: primary.subtle, 300: palette.purple[300],
+  400: palette.purple[400], 500: primary.base, 600: primary.base, 700: primary.dark,
+  800: primary.darker, 900: palette.purple[900], 950: palette.purple[950],
+} as const;
+
+export const linen = { 50: neutral[50], 100: neutral[100], 200: neutral[200], 300: neutral[300] } as const;
+export const ash = {
+  100: neutral[100], 200: neutral[200], 300: neutral[300], 400: neutral[400],
+  500: neutral[500], 600: neutral[600],
+} as const;
+export const stone = { 700: neutral[700], 800: neutral[800], 900: neutral[900] } as const;
+export const gold = charity.plate;
+
+export const wine = {
+  50: "#FEF2F2", 100: "#FEE2E2", 200: "#FECACA", 300: "#FCA5A5", 400: "#F87171",
+  500: palette.error, 600: "#DC2626", 700: "#B91C1C", 800: "#991B1B", 900: "#7F1D1D",
+} as const;
+
+export const mustard = {
+  50: "#FFFBEB", 100: "#FEF3C7", 200: "#FDE68A", 300: "#FCD34D", 400: "#FBBF24",
+  500: palette.warning, 600: "#D97706", 700: "#B45309", 800: "#92400E", 900: "#78350F",
+} as const;
+
+export const win = semantic.success;
+export const lose = semantic.error;
+export const clay = { 500: "#C2410C" } as const;
+export const iron = { 500: neutral[500] } as const;
+
+export const colors = {
+  primary, neutral, semantic, charity,
+  ink, glaze, linen, ash, stone, gold, wine, mustard, win, lose, clay, iron,
+  white: neutral[0], black: neutral[900],
+} as const;
+
+export type Colors = typeof colors;

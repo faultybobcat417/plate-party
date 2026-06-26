@@ -1,35 +1,54 @@
-export const fontSizes = {
-  xs: 10,
-  sm: 12,
-  base: 14,
-  md: 16,
-  lg: 18,
-  xl: 20,
-  "2xl": 24,
-  "3xl": 30,
-  "4xl": 36,
-  "5xl": 48,
+import { Platform } from "react-native";
+
+// ── FONT FAMILY ──
+export const fontFamily = {
+  sans: Platform.select({ ios: "Inter", android: "Inter", default: "Inter" }),
+  mono: Platform.select({ ios: "Courier", android: "monospace", default: "monospace" }),
 } as const;
 
-export const fontWeights = {
-  normal: "400" as const,
-  medium: "500" as const,
-  semibold: "600" as const,
-  bold: "700" as const,
-  extrabold: "800" as const,
+// ── SIZES ──
+export const sizes = {
+  xs: 10, sm: 12, base: 14, md: 16, lg: 18, xl: 20,
+  "2xl": 24, "3xl": 30, "4xl": 36, "5xl": 48,
 } as const;
 
+// ── WEIGHTS ──
+export const weights = {
+  regular: "400", medium: "500", semibold: "600", bold: "700", extrabold: "800",
+  normal: "400",
+} as const;
+
+// ── LINE HEIGHTS ──
 export const lineHeights = {
-  none: 1,
-  tight: 1.25,
-  snug: 1.375,
-  normal: 1.5,
-  relaxed: 1.625,
-  loose: 2,
+  none: 1.0, tight: 1.25, snug: 1.375, normal: 1.5, relaxed: 1.625, loose: 2.0,
+  xs: 14, sm: 16, base: 20, md: 24, lg: 28, xl: 32, "2xl": 38, "3xl": 44, "4xl": 52, "5xl": 64,
 } as const;
 
-export const typography = {
-  sizes: fontSizes,
-  weights: fontWeights,
-  lineHeights,
+// ── LETTER SPACING ──
+export const letterSpacing = {
+  tighter: -0.05, tight: -0.025, normal: 0, wide: 0.025, wider: 0.05,
 } as const;
+
+// ── PRESETS ──
+const presets = {
+  display: { fontSize: sizes["5xl"], fontWeight: weights.extrabold as "800", lineHeight: sizes["5xl"] * lineHeights.tight, letterSpacing: letterSpacing.tighter },
+  h1: { fontSize: sizes["4xl"], fontWeight: weights.bold as "700", lineHeight: sizes["4xl"] * lineHeights.tight, letterSpacing: letterSpacing.tight },
+  h2: { fontSize: sizes["3xl"], fontWeight: weights.semibold as "600", lineHeight: sizes["3xl"] * lineHeights.snug, letterSpacing: letterSpacing.tight },
+  h3: { fontSize: sizes["2xl"], fontWeight: weights.semibold as "600", lineHeight: sizes["2xl"] * lineHeights.snug, letterSpacing: letterSpacing.normal },
+  body: { fontSize: sizes.md, fontWeight: weights.medium as "500", lineHeight: sizes.md * lineHeights.normal, letterSpacing: letterSpacing.normal },
+  bodySmall: { fontSize: sizes.base, fontWeight: weights.regular as "400", lineHeight: sizes.base * lineHeights.normal, letterSpacing: letterSpacing.normal },
+  caption: { fontSize: sizes.sm, fontWeight: weights.medium as "500", lineHeight: sizes.sm * lineHeights.normal, letterSpacing: letterSpacing.wide },
+  micro: { fontSize: sizes.xs, fontWeight: weights.semibold as "600", lineHeight: sizes.xs * lineHeights.normal, letterSpacing: letterSpacing.wide },
+} as const;
+
+// ── COMBINED EXPORT (backward-compatible) ──
+export const typography = {
+  ...presets,
+  sizes,
+  weights,
+  lineHeights,
+  letterSpacing,
+  fontFamily,
+} as const;
+
+export type Typography = typeof typography;

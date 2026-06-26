@@ -32,7 +32,7 @@ export function SplashScreen({ navigation }: SplashScreenProps) {
       if (!mounted) return;
 
       if (profile && profile.displayName.trim()) {
-        navigation.replace("Main");
+        navigation.replace("Main" as any);
         return;
       }
 

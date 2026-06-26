@@ -58,7 +58,7 @@ export function WagerDetailScreen({ route, navigation }: Props) {
   useEffect(() => {
     void loadWager(wagerId);
     void loadBetsForWager(wagerId);
-    void loadPartyMembers(partyId);
+    void loadPartyMembers(partyId!);
     void (async () => {
       const [uid, did] = await Promise.all([getCurrentUserId(), getDeviceId()]);
       setUserId(uid);

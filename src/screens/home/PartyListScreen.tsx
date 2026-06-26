@@ -85,7 +85,7 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
           <Button
             title="Join Party"
             variant="secondary"
-            onPress={() => navigation.navigate("JoinParty")}
+            onPress={() => navigation.navigate("JoinParty" as any)}
           />
         </View>
       </SafeAreaView>
@@ -150,7 +150,7 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
         <Button
           title="Join Party"
           variant="secondary"
-          onPress={() => navigation.navigate("JoinParty")}
+          onPress={() => navigation.navigate("JoinParty" as any)}
         />
       </View>
     </SafeAreaView>
