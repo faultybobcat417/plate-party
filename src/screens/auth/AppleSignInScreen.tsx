@@ -26,7 +26,6 @@ export function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
       });
 
       if (credential.identityToken) {
-        // Send token to Supabase
         const { supabase } = await import("../../lib/supabase");
         const { error } = await supabase.auth.signInWithIdToken({
           provider: "apple",
@@ -38,7 +37,7 @@ export function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
       }
     } catch (error: any) {
       if (error.code === "ERR_CANCELED") {
-        // User cancelled, do nothing
+        // User cancelled
       } else {
         Alert.alert("Error", error.message || "Apple sign-in failed.");
       }
@@ -51,9 +50,7 @@ export function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Apple Sign-In</Text>
-        <Text style={styles.subtitle}>
-          This feature is only available on iOS devices.
-        </Text>
+        <Text style={styles.subtitle}>This feature is only available on iOS devices.</Text>
         <TouchableOpacity onPress={onSuccess}>
           <Text style={styles.link}>Use a different method</Text>
         </TouchableOpacity>
@@ -64,9 +61,7 @@ export function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Sign In with Apple</Text>
-      <Text style={styles.subtitle}>
-        Private, secure, and no tracking.
-      </Text>
+      <Text style={styles.subtitle}>Private, secure, and no tracking.</Text>
 
       <TouchableOpacity
         style={[styles.button, loading && styles.buttonDisabled]}
@@ -86,6 +81,8 @@ export function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
     </View>
   );
 }
+
+export default AppleSignInScreen;
 
 const styles = StyleSheet.create({
   container: {

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
 import { useAuth } from "../../context/AuthContext";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -18,7 +17,6 @@ export function GoogleSignInScreen({ onSuccess }: GoogleSignInScreenProps) {
     setLoading(true);
     try {
       await signInWithGoogle();
-      // For mobile, we rely on deep link callback
       Alert.alert(
         "Check Your Browser",
         "Complete sign-in in the browser. You will be redirected back to the app."
@@ -33,9 +31,7 @@ export function GoogleSignInScreen({ onSuccess }: GoogleSignInScreenProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Sign In with Google</Text>
-      <Text style={styles.subtitle}>
-        Secure, fast, and no password needed.
-      </Text>
+      <Text style={styles.subtitle}>Secure, fast, and no password needed.</Text>
 
       <TouchableOpacity
         style={[styles.button, loading && styles.buttonDisabled]}
@@ -55,6 +51,8 @@ export function GoogleSignInScreen({ onSuccess }: GoogleSignInScreenProps) {
     </View>
   );
 }
+
+export default GoogleSignInScreen;
 
 const styles = StyleSheet.create({
   container: {

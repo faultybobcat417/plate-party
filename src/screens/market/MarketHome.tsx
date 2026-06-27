@@ -1,228 +1,60 @@
-import React, { useState, useEffect, useCallback } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  RefreshControl,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { colors, typography, spacing } from "../../theme";
-import { useMarketStore } from "../../stores/useMarketStore";
-
-const CATEGORIES = ["All", "Technology", "Finance", "Sports", "Climate", "Politics", "Crypto"];
 
 export function MarketHome() {
   const navigation = useNavigation();
-  const { markets, loadMarkets } = useMarketStore();
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  useEffect(() => {
-    void loadMarkets();
-  }, [loadMarkets]);
-
-  const filtered = markets.filter((m: any) => {
-    const matchesCategory = activeCategory === "All" || m.category === activeCategory;
-    const matchesSearch = !searchQuery || m.title?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
-
-  const handleMarketPress = (marketId: string) => {
-    (navigation as any).navigate("MarketDetail", { marketId });
-  };
-
-  const renderMarket = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      onPress={() => handleMarketPress(item.id)}
-      style={{
-        backgroundColor: colors.neutral[0],
-        borderRadius: 16,
-        padding: spacing[4],
-        marginBottom: spacing[3],
-        shadowColor: colors.neutral[900],
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-        elevation: 3,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: typography.sizes.lg,
-          fontWeight: typography.weights.bold,
-          color: colors.neutral[900],
-          marginBottom: spacing[1],
-        }}
-      >
-        {item.title}
-      </Text>
-      <Text
-        style={{
-          fontSize: typography.sizes.base,
-          color: colors.neutral[500],
-          marginBottom: spacing[3],
-        }}
-      >
-        {item.description}
-      </Text>
-
-      <View
-        style={{
-          height: 8,
-          backgroundColor: colors.neutral[200],
-          borderRadius: 4,
-          marginBottom: spacing[2],
-          overflow: "hidden",
-        }}
-      >
-        <View
-          style={{
-            width: `${item.yesPercentage || 50}%`,
-            height: "100%",
-            backgroundColor: colors.primary.base,
-            borderRadius: 4,
-          }}
-        />
-      </View>
-
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={{ fontSize: typography.sizes.sm, color: colors.primary.base, fontWeight: typography.weights.semibold }}>
-          Yes {item.yesPercentage || 50}%
-        </Text>
-        <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[500] }}>
-          No {100 - (item.yesPercentage || 50)}%
-        </Text>
-      </View>
-
-      <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing[3] }}>
-        <View
-          style={{
-            backgroundColor: colors.primary.light,
-            paddingHorizontal: spacing[2],
-            paddingVertical: spacing[0.5],
-            borderRadius: 6,
-          }}
-        >
-          <Text style={{ fontSize: typography.sizes.sm, color: colors.primary.base, fontWeight: typography.weights.semibold }}>
-            {item.category?.toUpperCase() || "GENERAL"}
-          </Text>
-        </View>
-        <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[500], marginLeft: spacing[3] }}>
-          Vol: {(item.volume || 0).toLocaleString()} plates
-        </Text>
-        <TouchableOpacity
-          onPress={() => handleMarketPress(item.id)}
-          style={{
-            marginLeft: "auto",
-            backgroundColor: colors.primary.base,
-            paddingHorizontal: spacing[4],
-            paddingVertical: spacing[2],
-            borderRadius: 10,
-          }}
-        >
-          <Text style={{ fontSize: typography.sizes.sm, fontWeight: typography.weights.bold, color: colors.neutral[0] }}>
-            Trade
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.neutral[50] }}>
-      <View style={{ paddingHorizontal: spacing[4], paddingTop: spacing[3] }}>
-        <Text
-          style={{
-            fontSize: typography.sizes["3xl"],
-            fontWeight: typography.weights.bold,
-            color: colors.neutral[900],
-            marginBottom: spacing[3],
-          }}
-        >
-          Markets
-        </Text>
-
-        <TextInput
-          placeholder="Search markets..."
-          placeholderTextColor={colors.neutral[400]}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={{
-            backgroundColor: colors.neutral[0],
-            borderRadius: 12,
-            padding: spacing[3],
-            fontSize: typography.sizes.base,
-            color: colors.neutral[900],
-            marginBottom: spacing[3],
-          }}
-        />
-
-        {/* Category Filter — FIXED: row layout, no stretch */}
-        <View style={{ height: 40, marginBottom: spacing[2] }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ flexDirection: "row", alignItems: "center" }}
-          >
-            {CATEGORIES.map((cat) => {
-              const isActive = activeCategory === cat;
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setActiveCategory(cat)}
-                  activeOpacity={0.7}
-                  style={{
-                    paddingHorizontal: spacing[4],
-                    paddingVertical: spacing[2],
-                    borderRadius: 20,
-                    backgroundColor: isActive ? colors.primary.base : colors.neutral[0],
-                    borderWidth: 1,
-                    borderColor: isActive ? colors.primary.base : colors.neutral[200],
-                    marginRight: spacing[2],
-                    height: 36,
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: typography.sizes.sm,
-                      fontWeight: isActive ? typography.weights.bold : typography.weights.medium,
-                      color: isActive ? colors.neutral[0] : colors.neutral[600],
-                    }}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      </View>
-
-      <FlatList
-        data={filtered}
-        keyExtractor={(item: any) => item.id}
-        renderItem={renderMarket}
-        contentContainerStyle={{ padding: spacing[4], paddingTop: spacing[2] }}
-        refreshControl={
-          <RefreshControl refreshing={false} onRefresh={() => void loadMarkets()} tintColor={colors.primary.base} />
-        }
-        ListEmptyComponent={
-          <View style={{ alignItems: "center", paddingTop: spacing[10] }}>
-            <Text style={{ fontSize: 40, marginBottom: spacing[3] }}>📉</Text>
-            <Text style={{ fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, color: colors.neutral[900] }}>
-              No markets found
-            </Text>
-            <Text style={{ fontSize: typography.sizes.base, color: colors.neutral[500], marginTop: spacing[2] }}>
-              Check back later for new markets.
-            </Text>
-          </View>
-        }
-      />
-    </SafeAreaView>
+    <View style={styles.container}>
+      <Text style={styles.title}>Markets Removed</Text>
+      <Text style={styles.subtitle}>
+        Prediction markets have been removed from Plate Party.{"
+"}
+        Focus on Challenges, Games, and Parties instead.
+      </Text>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => navigation.navigate("Play" as never)}
+      >
+        <Text style={styles.buttonText}>Go to Play</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
+
+export default MarketHome;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0a0a0a",
+    padding: 24,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#FFD700",
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#888",
+    textAlign: "center",
+    marginBottom: 32,
+    lineHeight: 20,
+  },
+  button: {
+    backgroundColor: "#FFD700",
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+  },
+  buttonText: {
+    color: "#0a0a0a",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+});

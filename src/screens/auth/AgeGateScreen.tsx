@@ -79,6 +79,8 @@ export function AgeGateScreen({ onPassed }: AgeGateScreenProps) {
   );
 }
 
+export default AgeGateScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

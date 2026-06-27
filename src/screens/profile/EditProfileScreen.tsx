@@ -18,7 +18,6 @@ export function EditProfileScreen() {
       Alert.alert("Error", "You must be signed in to edit your profile.");
       return;
     }
-
     if (!displayName.trim()) {
       Alert.alert("Error", "Display name is required.");
       return;
@@ -79,6 +78,8 @@ export function EditProfileScreen() {
     </View>
   );
 }
+
+export default EditProfileScreen;
 
 const styles = StyleSheet.create({
   container: {

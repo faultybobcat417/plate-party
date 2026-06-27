@@ -80,6 +80,8 @@ export function MagicLinkScreen({ onSuccess }: MagicLinkScreenProps) {
   );
 }
 
+export default MagicLinkScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

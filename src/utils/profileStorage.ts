@@ -1,153 +1,184 @@
+import { supabase } from "../lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { User } from "../db/schema";
 
-import { enqueueMutation } from "../api/sync";
-import { getDb } from "../db/connection";
-import { createDefaultHlc, createUuid, users } from "../db/schema";
-import { colors } from "../theme";
-import { CURRENT_USER_ID_KEY } from "./identity";
+// COMPATIBILITY SHIM — maps old profileStorage API to Supabase
+// All files that import from "../utils/profileStorage" or "../../utils/profileStorage"
+// will now hit Supabase instead of local SQLite/AsyncStorage.
 
-const PROFILE_KEY = "plate-party-profile";
+const PROFILE_KEY = "@plateparty:profile";
+const USER_ID_KEY = "@plateparty:userId";
 
-export type UserProfile = {
+export interface UserProfile {
   id: string;
   displayName: string;
-  avatarColor: string;
-  deviceId: string;
-  venmoHandle?: string;
-  cashAppHandle?: string;
-  paypalMeHandle?: string;
-};
+  username: string;
+  plates: number;
+  avatarUrl?: string | null;
+  deviceId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
-export const AVATAR_COLORS = [
-  { name: "Glaze", value: colors.glaze[500] },
-  { name: "Mustard", value: colors.mustard[500] },
-  { name: "Wine", value: colors.wine[500] },
-  { name: "Clay", value: colors.clay[500] },
-  { name: "Iron", value: colors.iron[500] },
-];
+/**
+ * Create a new user profile (legacy API).
+ * Now: inserts into Supabase auth (anonymous) + public.users trigger.
+ */
+export async function createUserProfile(profile: Partial<UserProfile>): Promise<UserProfile> {
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
 
-export async function loadProfile(): Promise<UserProfile | null> {
-  const raw = await AsyncStorage.getItem(PROFILE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as UserProfile;
-  } catch {
-    return null;
+  const userId = data.user!.id;
+  const newProfile: UserProfile = {
+    id: userId,
+    displayName: profile.displayName || "Plate Tester",
+    username: profile.username || `user_${userId.slice(0, 8)}`,
+    plates: 100,
+    avatarUrl: profile.avatarUrl || null,
+    deviceId: profile.deviceId || null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(newProfile));
+  await AsyncStorage.setItem(USER_ID_KEY, userId);
+
+  return newProfile;
+}
+
+/**
+ * Get the current user profile (legacy API).
+ * Now: fetches from Supabase, falls back to AsyncStorage.
+ */
+export async function getUserProfile(): Promise<UserProfile | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) {
+    const cached = await AsyncStorage.getItem(PROFILE_KEY);
+    return cached ? JSON.parse(cached) : null;
   }
-}
 
-async function upsertUserRow(
-  profile: UserProfile,
-): Promise<{ hlc: string; now: string }> {
-  const db = await getDb();
-  const now = new Date().toISOString();
-  const hlc = createDefaultHlc();
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", session.user.id)
+    .single();
 
-  await db
-    .insert(users)
-    .values({
-      id: profile.id,
-      displayName: profile.displayName,
-      avatarColor: profile.avatarColor,
-      deviceId: profile.deviceId,
-      venmoHandle: profile.venmoHandle ?? null,
-      cashAppHandle: profile.cashAppHandle ?? null,
-      paypalMeHandle: profile.paypalMeHandle ?? null,
-      createdAt: now,
-      updatedAt: now,
-      hlc,
-      lastModifiedByDeviceId: profile.deviceId,
-    })
-    .onConflictDoUpdate({
-      target: users.id,
-      set: {
-        displayName: profile.displayName,
-        avatarColor: profile.avatarColor,
-        deviceId: profile.deviceId,
-        venmoHandle: profile.venmoHandle ?? null,
-        cashAppHandle: profile.cashAppHandle ?? null,
-        paypalMeHandle: profile.paypalMeHandle ?? null,
-        updatedAt: now,
-        hlc,
-        lastModifiedByDeviceId: profile.deviceId,
-      },
-    });
-
-  return { hlc, now };
-}
-
-export async function saveProfile(profile: UserProfile): Promise<void> {
-  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-
-  try {
-    const { hlc, now } = await upsertUserRow(profile);
-    await AsyncStorage.setItem(CURRENT_USER_ID_KEY, profile.id);
-    await enqueueMutation({
-      tableName: "users",
-      recordId: profile.id,
-      operation: "upsert",
-      payload: {
-        id: profile.id,
-        displayName: profile.displayName,
-        avatarColor: profile.avatarColor,
-        deviceId: profile.deviceId,
-        venmoHandle: profile.venmoHandle ?? null,
-        cashAppHandle: profile.cashAppHandle ?? null,
-        paypalMeHandle: profile.paypalMeHandle ?? null,
-        createdAt: now,
-        updatedAt: now,
-        hlc,
-        lastModifiedByDeviceId: profile.deviceId,
-      },
-      deviceId: profile.deviceId,
-      hlc,
-    });
-  } catch (error) {
-    console.error("Failed to persist profile to SQLite:", error);
-  }
-}
-
-export async function syncProfileToDatabase(): Promise<void> {
-  const profile = await loadProfile();
-  if (!profile) return;
-
-  try {
-    await upsertUserRow(profile);
-    await AsyncStorage.setItem(CURRENT_USER_ID_KEY, profile.id);
-  } catch (error) {
-    console.error("Failed to sync existing profile to SQLite:", error);
-  }
-}
-
-export async function ensureDefaultProfile(): Promise<UserProfile> {
-  const existing = await loadProfile();
-  if (existing) {
-    await AsyncStorage.setItem(CURRENT_USER_ID_KEY, existing.id);
-    return existing;
+  if (error || !data) {
+    const cached = await AsyncStorage.getItem(PROFILE_KEY);
+    return cached ? JSON.parse(cached) : null;
   }
 
   const profile: UserProfile = {
-    id: createUuid(),
-    displayName: "Plate Tester",
-    avatarColor: AVATAR_COLORS[0].value,
-    deviceId: createUuid(),
+    id: data.id,
+    displayName: data.display_name,
+    username: data.username,
+    plates: data.plates,
+    avatarUrl: data.avatar_url,
+    deviceId: data.device_id,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
   };
-  await saveProfile(profile);
+
+  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   return profile;
 }
 
-export async function getOrCreateDeviceId(): Promise<string> {
-  const profile = await loadProfile();
-  if (profile?.deviceId) {
-    await AsyncStorage.setItem(CURRENT_USER_ID_KEY, profile.id);
-    return profile.deviceId;
+/**
+ * Update user profile (legacy API).
+ * Now: PATCH to Supabase + local cache.
+ */
+export async function updateUserProfile(updates: Partial<UserProfile>): Promise<UserProfile> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("users")
+    .update({
+      display_name: updates.displayName,
+      username: updates.username,
+      avatar_url: updates.avatarUrl,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", session.user.id)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  const profile = await getUserProfile();
+  if (profile) {
+    const updated = { ...profile, ...updates, updatedAt: new Date().toISOString() };
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(updated));
+    return updated;
   }
-  const deviceId = createUuid();
-  await saveProfile({
-    id: createUuid(),
-    displayName: "",
-    avatarColor: AVATAR_COLORS[0].value,
-    deviceId,
-  });
-  return deviceId;
+  return data as unknown as UserProfile;
 }
+
+/**
+ * Sync local profile to database (legacy API).
+ * Now: no-op — Supabase IS the database. Kept for compatibility.
+ */
+export async function syncProfileToDatabase(): Promise<void> {
+  const profile = await getUserProfile();
+  if (!profile) return;
+  // Already synced via Supabase realtime/triggers
+}
+
+/**
+ * Get current user ID (legacy API).
+ * Now: returns Supabase auth user ID.
+ */
+export async function getCurrentUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id ?? (await AsyncStorage.getItem(USER_ID_KEY));
+}
+
+/**
+ * Get plates balance (legacy API).
+ * Now: from Supabase.
+ */
+export async function getPlates(): Promise<number> {
+  const profile = await getUserProfile();
+  return profile?.plates ?? 0;
+}
+
+/**
+ * Set plates balance (legacy API).
+ * Now: updates Supabase. USE WITH CAUTION — prefer atomic ledger ops.
+ */
+export async function setPlates(amount: number): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("No user");
+
+  const { error } = await supabase
+    .from("users")
+    .update({ plates: amount, updated_at: new Date().toISOString() })
+    .eq("id", userId);
+
+  if (error) throw error;
+}
+
+/**
+ * Legacy: check if user has completed onboarding.
+ */
+export async function hasCompletedOnboarding(): Promise<boolean> {
+  const val = await AsyncStorage.getItem("@plateparty:onboardingComplete");
+  return val === "true";
+}
+
+export async function setOnboardingComplete(complete: boolean): Promise<void> {
+  await AsyncStorage.setItem("@plateparty:onboardingComplete", complete ? "true" : "false");
+}
+
+// Default export for compatibility
+export default {
+  createUserProfile,
+  getUserProfile,
+  updateUserProfile,
+  syncProfileToDatabase,
+  getCurrentUserId,
+  getPlates,
+  setPlates,
+  hasCompletedOnboarding,
+  setOnboardingComplete,
+};
