@@ -6,7 +6,7 @@ interface MagicLinkScreenProps {
   onSuccess: () => void;
 }
 
-export default function MagicLinkScreen({ onSuccess }: MagicLinkScreenProps) {
+export function MagicLinkScreen({ onSuccess }: MagicLinkScreenProps) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);

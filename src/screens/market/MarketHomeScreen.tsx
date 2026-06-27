@@ -22,7 +22,7 @@ type MarketNav = NativeStackNavigationProp<MarketStackParamList>;
 
 const CATEGORIES = ["All", "Technology", "Finance", "Sports", "Climate", "Politics"];
 
-export default function MarketHomeScreen() {
+export function MarketHomeScreen() {
   const navigation = useNavigation<MarketNav>();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");

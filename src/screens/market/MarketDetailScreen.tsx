@@ -11,7 +11,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { colors, typography, spacing } from "../../theme";
 import { useMarketStore } from "../../stores/useMarketStore";
 
-export default function MarketDetailScreen() {
+export function MarketDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { marketId } = route.params as { marketId: string };

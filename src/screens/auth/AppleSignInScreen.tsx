@@ -7,7 +7,7 @@ interface AppleSignInScreenProps {
   onSuccess: () => void;
 }
 
-export default function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
+export function AppleSignInScreen({ onSuccess }: AppleSignInScreenProps) {
   const [loading, setLoading] = useState(false);
 
   const handleSignIn = async () => {

@@ -4,7 +4,7 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useUserStore } from "../../stores/useUserStore";
 import { useNavigation } from "@react-navigation/native";
 
-export default function EditProfileScreen() {
+export function EditProfileScreen() {
   const { profile, userId } = useCurrentUser();
   const { updateProfile } = useUserStore();
   const navigation = useNavigation();

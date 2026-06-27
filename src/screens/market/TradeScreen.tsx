@@ -25,7 +25,7 @@ import type { MarketStackParamList } from "../../navigation/types";
 type TradeRouteProp = RouteProp<MarketStackParamList, "Trade">;
 type TradeNav = NativeStackNavigationProp<MarketStackParamList>;
 
-export default function TradeScreen() {
+export function TradeScreen() {
   const route = useRoute<TradeRouteProp>();
   const navigation = useNavigation<TradeNav>();
   const currentUser = useCurrentUser();

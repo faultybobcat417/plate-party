@@ -10,7 +10,7 @@ interface GoogleSignInScreenProps {
   onSuccess: () => void;
 }
 
-export default function GoogleSignInScreen({ onSuccess }: GoogleSignInScreenProps) {
+export function GoogleSignInScreen({ onSuccess }: GoogleSignInScreenProps) {
   const [loading, setLoading] = useState(false);
   const { signInWithGoogle } = useAuth();
 

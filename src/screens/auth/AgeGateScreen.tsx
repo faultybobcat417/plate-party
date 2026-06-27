@@ -7,7 +7,7 @@ interface AgeGateScreenProps {
   onPassed: () => void;
 }
 
-export default function AgeGateScreen({ onPassed }: AgeGateScreenProps) {
+export function AgeGateScreen({ onPassed }: AgeGateScreenProps) {
   const [birthDate, setBirthDate] = useState(new Date(2000, 0, 1));
   const [showPicker, setShowPicker] = useState(false);
   const { signInAnonymously } = useAuth();

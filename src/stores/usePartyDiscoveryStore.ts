@@ -7,7 +7,6 @@ import {
   superRequestParty,
 } from "../api/party-discovery";
 import type { PartyFilters, PublicParty } from "../api/party-discovery";
-import { loadProfile } from "../utils/profileStorage";
 
 type SwipeAction = "skip" | "join" | "super";
 
@@ -26,8 +25,8 @@ type PartyDiscoveryActions = {
   setSearchQuery: (query: string) => Promise<void>;
   setFilters: (filters: PartyFilters) => Promise<void>;
   swipeLeft: () => void;
-  swipeRight: () => Promise<void>;
-  superRequest: () => Promise<void>;
+  swipeRight: (userId: string) => Promise<void>;
+  superRequest: (userId: string) => Promise<void>;
   clearError: () => void;
 };
 
@@ -48,7 +47,6 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
 
   loadParties: async () => {
     set({ isLoading: true, error: null });
-
     try {
       const parties = await listPublicParties();
       set({ parties, currentIndex: 0, isLoading: false });
@@ -62,7 +60,6 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
 
   setSearchQuery: async (query) => {
     set({ searchQuery: query, isLoading: true, error: null });
-
     try {
       const parties = await searchPublicParties(query, get().filters);
       set({ parties, currentIndex: 0, isLoading: false });
@@ -76,7 +73,6 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
 
   setFilters: async (filters) => {
     set({ filters, isLoading: true, error: null });
-
     try {
       const parties = await searchPublicParties(get().searchQuery, filters);
       set({ parties, currentIndex: 0, isLoading: false });
@@ -90,9 +86,7 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
 
   swipeLeft: () => {
     const { currentIndex, parties, swipeHistory } = get();
-
     if (currentIndex >= parties.length) return;
-
     const party = parties[currentIndex];
     set({
       swipeHistory: [...swipeHistory, { partyId: party.id, action: "skip" }],
@@ -100,17 +94,13 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
     });
   },
 
-  swipeRight: async () => {
+  swipeRight: async (userId: string) => {
     const { currentIndex, parties, swipeHistory } = get();
-
     if (currentIndex >= parties.length) return;
-
     const party = parties[currentIndex];
     set({ isLoading: true, error: null });
-
     try {
-      const profile = await loadProfile();
-      await joinParty(party.id, profile?.deviceId);
+      await joinParty(party.id, userId);
       set({
         swipeHistory: [...swipeHistory, { partyId: party.id, action: "join" }],
         currentIndex: currentIndex + 1,
@@ -124,17 +114,13 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
     }
   },
 
-  superRequest: async () => {
+  superRequest: async (userId: string) => {
     const { currentIndex, parties, swipeHistory } = get();
-
     if (currentIndex >= parties.length) return;
-
     const party = parties[currentIndex];
     set({ isLoading: true, error: null });
-
     try {
-      const profile = await loadProfile();
-      await superRequestParty(party.id, profile?.deviceId);
+      await superRequestParty(party.id, userId);
       set({
         swipeHistory: [...swipeHistory, { partyId: party.id, action: "super" }],
         currentIndex: currentIndex + 1,

@@ -1,6 +1,6 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import ProfileScreen from "../screens/profile/ProfileScreen";
+import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { GiverLeaderboardScreen } from "../screens/profile/GiverLeaderboardScreen";
 import { SettingsScreen } from "../screens/profile/SettingsScreen";
 import { ActivityHistoryScreen } from "../screens/activity/ActivityHistoryScreen";

@@ -15,7 +15,7 @@ import { useMarketStore } from "../../stores/useMarketStore";
 
 const CATEGORIES = ["All", "Technology", "Finance", "Sports", "Climate", "Politics", "Crypto"];
 
-export default function MarketHome() {
+export function MarketHome() {
   const navigation = useNavigation();
   const { markets, loadMarkets } = useMarketStore();
   const [activeCategory, setActiveCategory] = useState("All");

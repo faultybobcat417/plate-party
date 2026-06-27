@@ -2,7 +2,7 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { FeedStackParamList } from "../navigation/types";
 import { FeedHomeScreen } from "../screens/feed/FeedHomeScreen";
-import EnterStakeScreen from "../screens/feed/EnterStakeScreen";
+import { EnterStakeScreen } from "../screens/feed/EnterStakeScreen";
 
 const Stack = createNativeStackNavigator<FeedStackParamList>();
 

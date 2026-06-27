@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { useEffect } from "react";
 
 import { ActivityScreen } from "../screens/activity/ActivityScreen";
-import ProfileScreen from "../screens/profile/ProfileScreen";
+import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { colors, typography } from "../theme";
 import FeedStackNavigator from "./FeedStackNavigator";
 import { MarketStackNavigator } from "./MarketStackNavigator";

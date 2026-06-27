@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { colors, typography, spacing } from "../../theme";
 
-export default function EnterStakeScreen() {
+export function EnterStakeScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { stakeId, title, creator } = route.params as any;
