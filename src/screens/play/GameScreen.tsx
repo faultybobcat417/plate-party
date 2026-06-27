@@ -1,117 +1,119 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
-import { useGameStore } from '../../stores/useGameStore';
-import { useUserStore } from '../../stores/useUserStore';
-import { postLedgerTransaction } from '../../api/ledger';
-import { colors, spacing, typography } from '../../theme';
-import { Game } from '../../types/game';
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { useGameStore } from "../../stores/useGameStore";
+import { supabase } from "../../lib/supabase";
+
+interface TriviaQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+}
 
 export function GameScreen() {
-  const route = useRoute();
-  const navigation = useNavigation();
-  const { gameId } = route.params as { gameId: string };
-  const { games, fetchGameById, playGame } = useGameStore();
-  const { user, addPlates } = useUserStore();
-  const [game, setGame] = useState<Game | null>(null);
+  const { user } = useAuth();
+  const { startSession, submitAnswers } = useGameStore();
+  const [questions, setQuestions] = useState<TriviaQuestion[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<{ questionId: string; selected: number; correct: boolean; timeMs: number }[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [playing, setPlaying] = useState(false);
+  const [gameState, setGameState] = useState<"loading" | "playing" | "finished">("loading");
+  const [startTime, setStartTime] = useState(0);
 
-  const loadGame = useCallback(async () => {
+  useEffect(() => { fetchQuestions(); }, []);
+
+  const fetchQuestions = async () => {
     setLoading(true);
     try {
-      const data = await fetchGameById(gameId);
-      setGame(data);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load game.');
-    } finally {
-      setLoading(false);
-    }
-  }, [gameId, fetchGameById]);
+      const { data, error } = await supabase.functions.invoke("game-session", { body: { action: "generate", count: 5 } });
+      if (error) throw error;
+      setQuestions(data.questions || []);
+      setGameState("playing");
+      setStartTime(Date.now());
+    } catch (err: any) { Alert.alert("Error", err.message || "Failed to load game."); }
+    finally { setLoading(false); }
+  };
 
-  useEffect(() => {
-    let mounted = true;
-    loadGame();
-    return () => { mounted = false; };
-  }, [loadGame]);
-
-  const handlePlay = useCallback(async () => {
-    if (!user) {
-      Alert.alert('Login required', 'Please log in to play.');
-      return;
-    }
-    if (!game) return;
-    setPlaying(true);
+  const startGame = async () => {
+    if (!user?.id) { Alert.alert("Error", "Please sign in to play."); return; }
     try {
-      // Simulate game play; in real app, you'd have game logic
-      const win = Math.random() > 0.5;
-      let reward = 0;
-      if (win) {
-        reward = game.prize;
-        // Add plates via ledger
-        await postLedgerTransaction({
-          userId: user?.id || "anonymous",
-          amount: reward,
-          type: 'game_win',
-          reference: `game_${game.id}`,
-          description: `Won ${reward} plates playing ${game.title}`,
-        });
-        addPlates(reward);
-      } else {
-        // No reward, but maybe charge a fee? For now just show loss.
+      const session = await startSession(user.id, "trivia");
+      setSessionId(session.id);
+    } catch (err: any) { Alert.alert("Error", err.message); }
+  };
+
+  const handleAnswer = async (selectedIndex: number) => {
+    const question = questions[currentIndex];
+    const isCorrect = selectedIndex === question.correctIndex;
+    const timeMs = Date.now() - startTime;
+    const answer = { questionId: question.id, selected: selectedIndex, correct: isCorrect, timeMs };
+    setSelectedAnswers((prev) => [...prev, answer]);
+
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+    } else {
+      setGameState("finished");
+      if (sessionId) {
+        await submitAnswers(sessionId, [...selectedAnswers, answer], timeMs);
+        const score = [...selectedAnswers, answer].filter((a) => a.correct).length;
+        Alert.alert("Game Over", `Score: ${score}/${questions.length}${score >= 4 ? "
++10 Plates!" : ""}`);
       }
-      // Record play in store
-      await playGame(game.id, user.id, win);
-      Alert.alert(win ? '🎉 You won!' : '😞 You lost', win ? `You earned ${reward} plates!` : 'Try again!');
-      navigation.goBack();
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to play game.');
-    } finally {
-      setPlaying(false);
     }
-  }, [user, game, playGame, addPlates, navigation]);
+  };
 
-  if (loading) {
+  if (loading) return <View style={styles.container}><ActivityIndicator color="#FFD700" /></View>;
+
+  if (gameState === "loading") {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={colors.gold} />
+      <View style={styles.container}>
+        <Text style={styles.title}>Trivia Challenge</Text>
+        <Text style={styles.subtitle}>5 questions. 5 plates to play. 10 plates prize.</Text>
+        <TouchableOpacity style={styles.button} onPress={startGame}><Text style={styles.buttonText}>Start Game (5 Plates)</Text></TouchableOpacity>
       </View>
     );
   }
 
-  if (!game) {
+  if (gameState === "finished") {
+    const score = selectedAnswers.filter((a) => a.correct).length;
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Game not found</Text>
+      <View style={styles.container}>
+        <Text style={styles.title}>Game Over</Text>
+        <Text style={styles.scoreText}>{score} / {questions.length}</Text>
+        <TouchableOpacity style={styles.button} onPress={() => { setGameState("loading"); setCurrentIndex(0); setSelectedAnswers([]); fetchQuestions(); }}>
+          <Text style={styles.buttonText}>Play Again</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
+  const question = questions[currentIndex];
   return (
-    <View style={{ flex: 1, backgroundColor: colors.linen[50], padding: spacing[4], alignItems: 'center' }}>
-      <Text style={{ fontSize: typography.sizes.xl, fontWeight: typography.weights.semibold, lineHeight: typography.lineHeights.tight, color: colors.ink[900] }}>{game.title}</Text>
-      <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.normal, lineHeight: typography.lineHeights.normal, color: colors.ink[400], marginVertical: spacing[2] }}>
-        {game.description}
-      </Text>
-      <Text style={{ fontSize: typography.sizes.sm, fontWeight: typography.weights.normal, lineHeight: typography.lineHeights.normal, color: colors.ink[400], marginBottom: spacing[4] }}>
-        Prize: {game.prize} plates
-      </Text>
-      <TouchableOpacity
-        onPress={handlePlay}
-        disabled={playing}
-        style={{
-          backgroundColor: playing ? '#C7C7CC' : colors.gold,
-          paddingVertical: spacing[4],
-          paddingHorizontal: spacing[5],
-          borderRadius: 12,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text style={{ fontSize: typography.sizes.base, fontWeight: 'bold', lineHeight: typography.lineHeights.normal, color: '#FFFFFF' }}>
-          {playing ? 'Playing...' : 'Play Game'}
-        </Text>
-      </TouchableOpacity>
+    <View style={styles.container}>
+      <Text style={styles.progress}>Question {currentIndex + 1} / {questions.length}</Text>
+      <Text style={styles.question}>{question.question}</Text>
+      {question.options.map((opt, idx) => (
+        <TouchableOpacity key={idx} style={styles.optionButton} onPress={() => handleAnswer(idx)}>
+          <Text style={styles.optionText}>{opt}</Text>
+        </TouchableOpacity>
+      ))}
     </View>
   );
 }
+
+export default GameScreen;
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#0a0a0a", padding: 24, justifyContent: "center" },
+  title: { fontSize: 28, fontWeight: "bold", color: "#FFD700", marginBottom: 8, textAlign: "center" },
+  subtitle: { fontSize: 14, color: "#888", marginBottom: 32, textAlign: "center" },
+  progress: { fontSize: 14, color: "#888", marginBottom: 16 },
+  question: { fontSize: 20, fontWeight: "bold", color: "#fff", marginBottom: 24, lineHeight: 28 },
+  optionButton: { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333", borderRadius: 12, padding: 16, marginBottom: 12 },
+  optionText: { color: "#fff", fontSize: 16 },
+  button: { backgroundColor: "#FFD700", paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 16 },
+  buttonText: { color: "#0a0a0a", fontSize: 16, fontWeight: "bold" },
+  scoreText: { fontSize: 48, fontWeight: "bold", color: "#FFD700", textAlign: "center", marginVertical: 24 },
+});

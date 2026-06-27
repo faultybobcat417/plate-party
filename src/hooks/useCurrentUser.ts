@@ -7,9 +7,7 @@ export function useCurrentUser() {
   const { profile, loading: profileLoading, fetchProfile } = useUserStore();
 
   useEffect(() => {
-    if (user?.id && !profile) {
-      fetchProfile(user.id);
-    }
+    if (user?.id && !profile) fetchProfile(user.id);
   }, [user?.id, profile, fetchProfile]);
 
   return {
@@ -18,8 +16,6 @@ export function useCurrentUser() {
     isAuthenticated: !!user,
     isAnonymous: user?.app_metadata?.provider === "anonymous",
     loading: authLoading || profileLoading,
-    refreshProfile: () => {
-      if (user?.id) fetchProfile(user.id);
-    },
+    refreshProfile: () => { if (user?.id) fetchProfile(user.id); },
   };
 }

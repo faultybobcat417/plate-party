@@ -9,11 +9,8 @@ const API_KEYS = {
 export const PLATE_PRODUCT_ID = "plate_party_10_plates";
 
 export async function initializeRevenueCat() {
-  if (Platform.OS === "ios") {
-    Purchases.configure({ apiKey: API_KEYS.ios });
-  } else {
-    Purchases.configure({ apiKey: API_KEYS.android });
-  }
+  if (Platform.OS === "ios") Purchases.configure({ apiKey: API_KEYS.ios });
+  else Purchases.configure({ apiKey: API_KEYS.android });
   Purchases.setLogLevel(LOG_LEVEL.DEBUG);
 }
 
@@ -31,9 +28,7 @@ export async function purchasePackage(pkg: PurchasesPackage): Promise<{ success:
     const transaction = customerInfo.allPurchaseDatesByProduct[productIdentifier];
     return { success: true, transactionId: transaction };
   } catch (error: any) {
-    if (error.userCancelled) {
-      return { success: false, error: "User cancelled purchase." };
-    }
+    if (error.userCancelled) return { success: false, error: "User cancelled purchase." };
     return { success: false, error: error.message || "Purchase failed." };
   }
 }
@@ -43,6 +38,4 @@ export async function restorePurchases(): Promise<boolean> {
   return Object.keys(customerInfo.allPurchaseDatesByProduct).length > 0;
 }
 
-export async function getCustomerInfo() {
-  return await Purchases.getCustomerInfo();
-}
+export async function getCustomerInfo() { return await Purchases.getCustomerInfo(); }

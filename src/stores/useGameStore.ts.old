@@ -1,52 +1,75 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Game } from '../types/game';
+import { create } from "zustand";
+import { supabase } from "../lib/supabase";
+import { GameSession } from "../db/schema";
 
 interface GameState {
-  games: Game[];
-  isLoading: boolean;
+  sessions: GameSession[];
+  currentSession: GameSession | null;
+  loading: boolean;
   onlineCount: number;
-  fetchGames: () => Promise<void>;
-  fetchGameById: (id: string) => Promise<Game>;
-  playGame: (gameId: string, userId: string, win: boolean) => Promise<void>;
-  recordGame: (gameId: string, result: { won: boolean; score: number; platesEarned: number }) => Promise<void>;
+  startSession: (userId: string, gameType: string) => Promise<GameSession>;
+  submitAnswers: (sessionId: string, answers: any[], timeTakenMs: number) => Promise<void>;
+  fetchSessions: (userId: string) => Promise<void>;
 }
 
-const mockGames: Game[] = [
-  { id: 'g1', title: 'Plate Flip', description: 'Flip a coin, win plates!', prize: 20 },
-  { id: 'g2', title: 'Steak Guess', description: 'Guess the weight, win big!', prize: 50 },
-];
+export const useGameStore = create<GameState>((set, get) => ({
+  sessions: [],
+  currentSession: null,
+  loading: false,
+  onlineCount: 0,
 
-export const useGameStore = create<GameState>()(
-  persist(
-    (set, get) => ({
-      games: mockGames,
-      isLoading: false,
-      onlineCount: 42,
-      fetchGames: async () => {
-        set({ isLoading: true });
-        try {
-          set({ games: mockGames, isLoading: false });
-        } catch {
-          set({ isLoading: false });
-        }
-      },
-      fetchGameById: async (id) => {
-        const game = get().games.find((g) => g.id === id);
-        if (!game) throw new Error('Game not found');
-        return game;
-      },
-      playGame: async (gameId, userId, win) => {
-        // Record play in DB
-      },
-      recordGame: async (gameId, result) => {
-        // Record game result
-      },
-    }),
-    {
-      name: 'game-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+  startSession: async (userId: string, gameType: string) => {
+    const { data, error } = await supabase
+      .from("game_sessions")
+      .insert({
+        user_id: userId,
+        game_type: gameType,
+        status: "playing",
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    const session = data as GameSession;
+    set({ currentSession: session });
+    return session;
+  },
+
+  submitAnswers: async (sessionId: string, answers: any[], timeTakenMs: number) => {
+    const score = answers.filter((a) => a.correct).length;
+
+    const { data, error } = await supabase
+      .from("game_sessions")
+      .update({
+        score,
+        answers,
+        time_taken_ms: timeTakenMs,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", sessionId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    set({ currentSession: data as GameSession });
+  },
+
+  fetchSessions: async (userId: string) => {
+    set({ loading: true });
+    try {
+      const { data, error } = await supabase
+        .from("game_sessions")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      set({ sessions: (data || []) as GameSession[], loading: false });
+    } catch (error) {
+      console.error("Failed to fetch game sessions:", error);
+      set({ loading: false });
     }
-  )
-);
+  },
+}));

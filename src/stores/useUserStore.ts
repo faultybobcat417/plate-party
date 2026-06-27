@@ -13,16 +13,10 @@ interface UserState {
 export const useUserStore = create<UserState>((set) => ({
   profile: null,
   loading: false,
-
   fetchProfile: async (userId: string) => {
     set({ loading: true });
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", userId)
-        .single();
-
+      const { data, error } = await supabase.from("users").select("*").eq("id", userId).single();
       if (error) throw error;
       set({ profile: data as User, loading: false });
     } catch (error) {
@@ -30,19 +24,9 @@ export const useUserStore = create<UserState>((set) => ({
       set({ loading: false });
     }
   },
-
   updateProfile: async (userId: string, updates: Partial<User>) => {
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId)
-        .select()
-        .single();
-
+      const { data, error } = await supabase.from("users").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", userId).select().single();
       if (error) throw error;
       set({ profile: data as User });
     } catch (error) {
@@ -50,6 +34,5 @@ export const useUserStore = create<UserState>((set) => ({
       throw error;
     }
   },
-
   setProfile: (profile) => set({ profile }),
 }));

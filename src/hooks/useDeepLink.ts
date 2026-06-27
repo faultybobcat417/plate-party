@@ -9,7 +9,6 @@ export function useDeepLink() {
   useEffect(() => {
     const handleUrl = async (url: string) => {
       if (url.includes("auth/callback") || url.includes("type=signup") || url.includes("type=magiclink")) {
-        // Extract tokens from URL if present
         const parsed = Linking.parse(url);
         if (parsed.queryParams?.access_token) {
           const { access_token, refresh_token } = parsed.queryParams;
@@ -22,18 +21,8 @@ export function useDeepLink() {
       }
     };
 
-    // Handle initial URL
-    Linking.getInitialURL().then((url) => {
-      if (url) handleUrl(url);
-    });
-
-    // Handle URL changes
-    const subscription = Linking.addEventListener("url", ({ url }) => {
-      handleUrl(url);
-    });
-
-    return () => {
-      subscription.remove();
-    };
+    Linking.getInitialURL().then((url) => { if (url) handleUrl(url); });
+    const subscription = Linking.addEventListener("url", ({ url }) => handleUrl(url));
+    return () => { subscription.remove(); };
   }, [refreshSession]);
 }

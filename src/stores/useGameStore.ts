@@ -17,54 +17,23 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentSession: null,
   loading: false,
   onlineCount: 0,
-
   startSession: async (userId: string, gameType: string) => {
-    const { data, error } = await supabase
-      .from("game_sessions")
-      .insert({
-        user_id: userId,
-        game_type: gameType,
-        status: "playing",
-      })
-      .select()
-      .single();
-
+    const { data, error } = await supabase.from("game_sessions").insert({ user_id: userId, game_type: gameType, status: "playing" }).select().single();
     if (error) throw error;
     const session = data as GameSession;
     set({ currentSession: session });
     return session;
   },
-
   submitAnswers: async (sessionId: string, answers: any[], timeTakenMs: number) => {
     const score = answers.filter((a) => a.correct).length;
-
-    const { data, error } = await supabase
-      .from("game_sessions")
-      .update({
-        score,
-        answers,
-        time_taken_ms: timeTakenMs,
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", sessionId)
-      .select()
-      .single();
-
+    const { data, error } = await supabase.from("game_sessions").update({ score, answers, time_taken_ms: timeTakenMs, status: "completed", completed_at: new Date().toISOString() }).eq("id", sessionId).select().single();
     if (error) throw error;
     set({ currentSession: data as GameSession });
   },
-
   fetchSessions: async (userId: string) => {
     set({ loading: true });
     try {
-      const { data, error } = await supabase
-        .from("game_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
+      const { data, error } = await supabase.from("game_sessions").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50);
       if (error) throw error;
       set({ sessions: (data || []) as GameSession[], loading: false });
     } catch (error) {

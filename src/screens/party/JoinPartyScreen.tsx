@@ -1,146 +1,80 @@
-import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, TextInput } from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { getPartyByInviteCode, joinParty } from "../../api/party";
+import { useNavigation, useRoute } from "@react-navigation/native";
 
-import { Button } from "../../components/primitives/Button";
-import { Input } from "../../components/primitives/Input";
-import { usePartyStore } from "../../stores/usePartyStore";
-import { colors, spacing, typography } from "../../theme";
-import { loadProfile } from "../../utils/profileStorage";
-import type { PartyStackParamList } from "../../navigation/types";
-
-export type JoinPartyScreenProps = NativeStackScreenProps<PartyStackParamList, "JoinParty">;
-
-export function JoinPartyScreen({ navigation, route }: JoinPartyScreenProps) {
-  const { joinParty, isLoading, error, clearError } = usePartyStore();
-  const [inviteCode, setInviteCode] = useState(route.params?.inviteCode ?? "");
-  const [validationError, setValidationError] = useState<string | null>(null);
+export function JoinPartyScreen() {
+  const { user } = useAuth();
+  const navigation = useNavigation();
+  const route = useRoute();
+  const [code, setCode] = useState((route.params as any)?.inviteCode || "");
+  const [loading, setLoading] = useState(false);
+  const [party, setParty] = useState<any>(null);
 
   useEffect(() => {
-    if (route.params?.inviteCode) {
-      setInviteCode(route.params.inviteCode);
-    }
-  }, [route.params?.inviteCode]);
+    if (code) lookupParty();
+  }, []);
 
-  useEffect(() => {
-    return () => {
-      clearError();
-    };
-  }, [clearError]);
+  const lookupParty = async () => {
+    if (!code.trim()) return;
+    setLoading(true);
+    const found = await getPartyByInviteCode(code.trim().toUpperCase());
+    setParty(found);
+    setLoading(false);
+  };
 
   const handleJoin = async () => {
-    clearError();
-    setValidationError(null);
-
-    const code = inviteCode.trim();
-    if (!code) {
-      setValidationError("Invite code is required.");
-      return;
-    }
-
-    const profile = await loadProfile();
-    if (!profile?.id || !profile.deviceId) {
-      setValidationError("Profile not found. Please create a profile first.");
-      return;
-    }
-
+    if (!user?.id) { Alert.alert("Error", "Please sign in first."); return; }
+    if (!party) return;
+    setLoading(true);
     try {
-      const result = await joinParty({
-        inviteCode: code,
-        userId: profile.id,
-        deviceId: profile.deviceId,
-      });
-
-      navigation.replace("PartyDetail", { partyId: result.party.id });
-    } catch {
-      // Error is handled by the store and surfaced below.
-    }
+      await joinParty(party.id, user.id);
+      Alert.alert("Success", `You joined ${party.name}!`);
+      navigation.navigate("PartyDetail", { id: party.id } as never);
+    } catch (error: any) { Alert.alert("Error", error.message || "Failed to join party."); }
+    finally { setLoading(false); }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.title}>Join a party</Text>
-        <Text style={styles.subtitle}>
-          Enter the 6-character invite code from your host.
-        </Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Join a Party</Text>
+      <Text style={styles.subtitle}>Enter an invite code or use a deep link</Text>
+      <TextInput style={styles.input} value={code} onChangeText={setCode} placeholder="ABC123" placeholderTextColor="#666" autoCapitalize="characters" maxLength={6} />
+      <TouchableOpacity style={styles.button} onPress={lookupParty} disabled={loading || !code.trim()}>
+        <Text style={styles.buttonText}>Look Up Party</Text>
+      </TouchableOpacity>
 
-        <Input
-          label="Invite code"
-          placeholder="XXXXXX"
-          value={inviteCode}
-          onChangeText={(text) => setInviteCode(text.toUpperCase())}
-          autoCapitalize="characters"
-          maxLength={10}
-        />
+      {loading && <ActivityIndicator color="#FFD700" style={{ marginTop: 16 }} />}
 
-        {(validationError || error) ? (
-          <Text style={styles.error}>{validationError ?? error}</Text>
-        ) : null}
-
-        <View style={styles.footer}>
-          <Button
-            title="Join Party"
-            size="lg"
-            loading={isLoading}
-            onPress={handleJoin}
-          />
+      {party && (
+        <View style={styles.partyCard}>
+          <Text style={styles.partyName}>{party.name}</Text>
+          <Text style={styles.partyDesc}>{party.description || "No description"}</Text>
+          <TouchableOpacity style={[styles.button, { marginTop: 12 }]} onPress={handleJoin} disabled={loading}>
+            <Text style={styles.buttonText}>Join Party</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
-      {isLoading ? (
-        <View style={styles.overlay}>
-          <ActivityIndicator size="large" color={colors.glaze[600]} />
-        </View>
-      ) : null}
-    </SafeAreaView>
+      )}
+
+      {!party && !loading && code.length === 6 && (
+        <Text style={styles.notFound}>Party not found. Check the code and try again.</Text>
+      )}
+    </View>
   );
 }
 
+export default JoinPartyScreen;
+
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.linen[100],
-    flex: 1,
-  },
-  scroll: {
-    padding: spacing[6],
-  },
-  title: {
-    color: colors.ink[900],
-    fontSize: typography.sizes["3xl"],
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing[2],
-  },
-  subtitle: {
-    color: colors.ash[600],
-    fontSize: typography.sizes.base,
-    marginBottom: spacing[6],
-  },
-  error: {
-    color: colors.wine[500],
-    fontSize: typography.sizes.sm,
-    marginTop: spacing[4],
-  },
-  footer: {
-    marginTop: spacing[6],
-  },
-  overlay: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.6)",
-    bottom: 0,
-    justifyContent: "center",
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
+  container: { flex: 1, backgroundColor: "#0a0a0a", padding: 24 },
+  title: { fontSize: 24, fontWeight: "bold", color: "#FFD700", marginBottom: 8 },
+  subtitle: { fontSize: 14, color: "#888", marginBottom: 24 },
+  input: { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333", borderRadius: 12, padding: 16, color: "#fff", fontSize: 18, marginBottom: 16, textAlign: "center", letterSpacing: 4 },
+  button: { backgroundColor: "#FFD700", paddingVertical: 16, borderRadius: 12, alignItems: "center" },
+  buttonText: { color: "#0a0a0a", fontSize: 16, fontWeight: "bold" },
+  partyCard: { backgroundColor: "#1a1a1a", borderRadius: 12, padding: 16, marginTop: 24, borderWidth: 1, borderColor: "#333" },
+  partyName: { fontSize: 18, fontWeight: "bold", color: "#fff", marginBottom: 4 },
+  partyDesc: { fontSize: 14, color: "#888" },
+  notFound: { color: "#ff4444", textAlign: "center", marginTop: 16 },
 });
