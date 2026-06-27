@@ -41,7 +41,7 @@ export function WagerCard({ wager, participantNames = [], onPress }: WagerCardPr
           {wager.question}
         </Text>
         <View style={styles.footer}>
-          <CountdownTimer deadline={wager.deadline} />
+          <CountdownTimer deadline={wager.deadline ? new Date(wager.deadline).toISOString() : new Date().toISOString()} />
           <AvatarStack names={participantNames} max={3} size="sm" />
         </View>
       </Card>

@@ -12,6 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import * as Crypto from "expo-crypto";
 
 // Users table (matches auth.users.id)
 export const users = pgTable(
@@ -84,6 +85,11 @@ export const parties = pgTable(
     hostId: uuid("host_id").notNull().references(() => users.id),
     inviteCode: text("invite_code").unique(),
     isPrivate: boolean("is_private").notNull().default(false),
+    charityPoolPlates: integer("charity_pool_plates").notNull().default(0),
+    charityOrgName: text("charity_org_name"),
+    charityOrgUrl: text("charity_org_url"),
+    defaultStakePlates: integer("default_stake_plates").notNull().default(1),
+    realMoneyEnabled: boolean("real_money_enabled").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -120,7 +126,15 @@ export const partyMembers = pgTable(
     partyId: uuid("party_id").notNull().references(() => parties.id),
     userId: uuid("user_id").notNull().references(() => users.id),
     role: text("role").notNull().default("member"),
+    plateBalance: integer("plate_balance").notNull().default(0),
+    reservedPlateBalance: integer("reserved_plate_balance").notNull().default(0),
+    totalPlatesWagered: integer("total_plates_wagered").notNull().default(0),
+    totalWins: integer("total_wins").notNull().default(0),
+    totalLosses: integer("total_losses").notNull().default(0),
+    currentStreak: integer("current_streak").notNull().default(0),
+    longestStreak: integer("longest_streak").notNull().default(0),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    leftAt: timestamp("left_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
@@ -260,6 +274,99 @@ export const predictionEntries = pgTable(
   ]
 );
 
+// Legacy local wager tables kept for compatibility with the SQLite-era screens.
+export const wagers = pgTable(
+  "wagers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    partyId: uuid("party_id").notNull().references(() => parties.id),
+    createdByUserId: uuid("created_by_user_id").notNull().references(() => users.id),
+    question: text("question").notNull(),
+    stakePlates: integer("stake_plates").notNull().default(1),
+    status: text("status").notNull().default("open"),
+    winningOptionId: uuid("winning_option_id"),
+    deadline: timestamp("deadline", { withTimezone: true }),
+    oracleType: text("oracle_type").notNull().default("manual"),
+    oracleStatus: text("oracle_status").notNull().default("not_required"),
+    naPolicy: text("na_policy").notNull().default("refund"),
+    naPenaltyPlates: integer("na_penalty_plates").notNull().default(0),
+    resolutionKind: text("resolution_kind"),
+    resolutionNote: text("resolution_note"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    hlc: text("hlc"),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("wagers_party_status_deadline_idx").on(table.partyId, table.status, table.deadline),
+    index("wagers_created_by_user_id_idx").on(table.createdByUserId),
+  ]
+);
+
+export const wagerOptions = pgTable(
+  "wager_options",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wagerId: uuid("wager_id").notNull().references(() => wagers.id),
+    label: text("label").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("wager_options_wager_id_idx").on(table.wagerId),
+  ]
+);
+
+export const bets = pgTable(
+  "bets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wagerId: uuid("wager_id").notNull().references(() => wagers.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    optionId: uuid("option_id").notNull(),
+    platesWagered: integer("plates_wagered").notNull(),
+    placedAt: timestamp("placed_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    hlc: text("hlc"),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    uniqueIndex("bets_wager_user_unique").on(table.wagerId, table.userId),
+    index("bets_wager_status_idx").on(table.wagerId, table.status),
+    index("bets_user_id_idx").on(table.userId),
+  ]
+);
+
+export const poolTransactions = pgTable(
+  "pool_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    partyId: uuid("party_id").notNull().references(() => parties.id),
+    wagerId: uuid("wager_id").references(() => wagers.id),
+    fromUserId: uuid("from_user_id").references(() => users.id),
+    plateAmount: integer("plate_amount").notNull(),
+    reason: text("reason").notNull(),
+    note: text("note"),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    hlc: text("hlc"),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("pool_transactions_party_timestamp_idx").on(table.partyId, table.timestamp),
+    index("pool_transactions_wager_id_idx").on(table.wagerId),
+  ]
+);
+
 // Game sessions (anti-cheat)
 export const gameSessions = pgTable(
   "game_sessions",
@@ -318,16 +425,121 @@ export const iapReceipts = pgTable(
   ]
 );
 
-// Types
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-export type LedgerEntry = typeof ledgerEntries.$inferSelect;
-export type Party = typeof parties.$inferSelect;
-export type PartyMember = typeof partyMembers.$inferSelect;
+
+// Goals (user personal challenges)
+export const goals = pgTable(
+  "goals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    title: text("title").notNull(),
+    description: text("description"),
+    stakeAmount: bigint("stake_amount", { mode: "number" }).notNull().default(0),
+    deadline: timestamp("deadline", { withTimezone: true }),
+    status: text("status").notNull().default("active"),
+    streakWeeks: integer("streak_weeks").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("goals_user_id_idx").on(table.userId),
+    index("goals_status_idx").on(table.status),
+  ]
+);
+
+// Donations (charity donations)
+export const donations = pgTable(
+  "donations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    charityName: text("charity_name").notNull(),
+    charityEin: text("charity_ein"),
+    platesAmount: bigint("plates_amount", { mode: "number" }).notNull(),
+    usdValue: integer("usd_value").notNull(),
+    status: text("status").notNull().default("pending"),
+    receiptUrl: text("receipt_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("donations_user_id_idx").on(table.userId),
+  ]
+);
+
+
+export type Uuid = string;
+export type User = typeof users.$inferSelect & {
+  name?: string;
+  totalGiven?: number;
+  avatarColor?: string;
+};
+export type LedgerSourceTable = "bets" | "pool_transactions" | "ious" | "manual_adjustments" | string;
+export type PartyMemberRole = "host" | "admin" | "member";
+export type PaymentProvider = "venmo" | "cash_app" | "paypal" | "manual";
+export type LedgerEntry = Omit<typeof ledgerEntries.$inferSelect, "createdAt"> & {
+  createdAt: string;
+  sourceTable: LedgerSourceTable;
+  accountType: string;
+  accountId: string;
+  memo?: string;
+  plateDelta: number;
+};
+export type Party = Omit<typeof parties.$inferSelect, "inviteCode" | "charityOrgName" | "charityOrgUrl"> & {
+  inviteCode: string;
+  charityOrgName: string;
+  charityOrgUrl: string | null;
+};
+export type PartyMember = typeof partyMembers.$inferSelect & {
+  displayName?: string;
+  avatarColor?: string;
+};
 export type Challenge = typeof challenges.$inferSelect;
 export type ChallengeEntry = typeof challengeEntries.$inferSelect;
 export type Prediction = typeof predictions.$inferSelect;
 export type PredictionOption = typeof predictionOptions.$inferSelect;
 export type PredictionEntry = typeof predictionEntries.$inferSelect;
+export type Wager = typeof wagers.$inferSelect;
+export type WagerOption = typeof wagerOptions.$inferSelect;
+export type Bet = typeof bets.$inferSelect;
+export type PoolTransaction = typeof poolTransactions.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
-export type IAPReceipt = typeof iapReceipts.$inferSelect;
+export type SyncOutboxEntry = typeof syncOutbox.$inferSelect;
+export type IapReceipt = typeof iapReceipts.$inferSelect;
+export type Goal = typeof goals.$inferSelect;
+export type Donation = typeof donations.$inferSelect;
+
+export const schema = {
+  users,
+  ledgerEntries,
+  parties,
+  partyMembers,
+  challenges,
+  challengeEntries,
+  predictions,
+  predictionOptions,
+  predictionEntries,
+  wagers,
+  wagerOptions,
+  bets,
+  poolTransactions,
+  gameSessions,
+  syncOutbox,
+  iapReceipts,
+  goals,
+  donations,
+};
+
+// Auto-generated helpers
+export function createUuid(): string {
+  return Crypto.randomUUID();
+}
+
+let hlcCounter = 0;
+
+export function createDefaultHlc(): string {
+  const now = Date.now();
+  hlcCounter = (hlcCounter + 1) % 1000;
+  const counter = hlcCounter.toString().padStart(3, "0");
+  return `${now}-${counter}-local`;
+}

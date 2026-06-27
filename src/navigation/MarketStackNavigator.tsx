@@ -1,10 +1,10 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import MarketHomeScreen from "../screens/market/MarketHomeScreen";
-import MarketDetailScreen from "../screens/market/MarketDetailScreen";
+import { MarketHomeScreen } from "../screens/market/MarketHomeScreen";
+import { MarketDetailScreen } from "../screens/market/MarketDetailScreen";
 import { WatchlistScreen } from "../screens/market/WatchlistScreen";
 import type { MarketStackParamList } from "./types";
-import TradeScreen from "../screens/market/TradeScreen";
+import { TradeScreen } from "../screens/market/TradeScreen";
 
 const Stack = createNativeStackNavigator<MarketStackParamList>();
 

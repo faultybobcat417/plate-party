@@ -7,6 +7,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 export function JoinPartyScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const navigate = navigation.navigate as (screen: string, params?: object) => void;
   const route = useRoute();
   const [code, setCode] = useState((route.params as any)?.inviteCode || "");
   const [loading, setLoading] = useState(false);
@@ -31,7 +32,7 @@ export function JoinPartyScreen() {
     try {
       await joinParty(party.id, user.id);
       Alert.alert("Success", `You joined ${party.name}!`);
-      navigation.navigate("PartyDetail", { id: party.id } as never);
+      navigate("PartyDetail", { partyId: party.id });
     } catch (error: any) { Alert.alert("Error", error.message || "Failed to join party."); }
     finally { setLoading(false); }
   };

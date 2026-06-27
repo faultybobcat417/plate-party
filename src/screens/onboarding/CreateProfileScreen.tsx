@@ -53,7 +53,7 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
       const existing = await loadProfile();
       if (mounted && existing) {
         setDisplayName(existing.displayName);
-        setAvatarColor(existing.avatarColor);
+        setAvatarColor(existing.avatarColor ?? avatarColor);
         setVenmoHandle(existing.venmoHandle ?? "");
         setCashAppHandle(existing.cashAppHandle ?? "");
         setPaypalMeHandle(existing.paypalMeHandle ?? "");
@@ -131,6 +131,8 @@ export function CreateProfileScreen({ navigation }: CreateProfileScreenProps) {
         id: existing?.id ?? createUuid(),
         deviceId: existing?.deviceId ?? createUuid(),
         displayName: trimmedName,
+        username: existing?.username ?? trimmedName.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 30),
+        plates: existing?.plates ?? 100,
         avatarColor,
         venmoHandle: venmoHandle.trim() || undefined,
         cashAppHandle: cashAppHandle.trim() || undefined,

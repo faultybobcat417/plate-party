@@ -58,11 +58,19 @@ export type ProfileStackParamList = {
   EditProfile: undefined;
   GiverLeaderboard: undefined;
   ActivityHistory: undefined;
+  PlateStore: undefined;
+  CharitySettings: undefined;
 };
 
 export type PlayStackParamList = {
   PlayHome: undefined;
   GameScreen: { gameId: string };
+  WordGuess: undefined;
+  RPS: undefined;
+  TicTacToe: undefined;
+  Memory: undefined;
+  QuickMath: undefined;
+  Questions: undefined;
 };
 
 export type GlobalParamList = {

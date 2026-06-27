@@ -6,6 +6,7 @@ import { useNavigation } from "@react-navigation/native";
 export function ChallengeListScreen() {
   const { challenges, loading, fetchOpen } = useChallengeStore();
   const navigation = useNavigation();
+  const navigate = navigation.navigate as (screen: string, params?: object) => void;
 
   useEffect(() => { fetchOpen(); }, []);
 
@@ -17,7 +18,7 @@ export function ChallengeListScreen() {
           data={challenges}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} onPress={() => navigation.navigate("ChallengeDetail", { id: item.id } as never)}>
+            <TouchableOpacity style={styles.card} onPress={() => navigate("ChallengeDetail", { challengeId: item.id })}>
               <Text style={styles.cardTitle}>{item.title}</Text>
               <Text style={styles.cardDesc}>{item.description || "No description"}</Text>
               <Text style={styles.cardMeta}>Stake: {item.stakeAmount} Plates | Reward: {item.rewardAmount} Plates</Text>
@@ -26,7 +27,7 @@ export function ChallengeListScreen() {
           ListEmptyComponent={<Text style={styles.empty}>No open challenges right now.</Text>}
         />
       )}
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate("CreateChallenge" as never)}>
+      <TouchableOpacity style={styles.fab} onPress={() => navigate("CreateChallenge")}>
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
     </View>

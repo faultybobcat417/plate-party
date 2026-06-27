@@ -58,8 +58,7 @@ export function GameScreen() {
       if (sessionId) {
         await submitAnswers(sessionId, [...selectedAnswers, answer], timeMs);
         const score = [...selectedAnswers, answer].filter((a) => a.correct).length;
-        Alert.alert("Game Over", `Score: ${score}/${questions.length}${score >= 4 ? "
-+10 Plates!" : ""}`);
+        Alert.alert("Game Over", `Score: ${score}/${questions.length}${score >= 4 ? "\n+10 Plates!" : ""}`);
       }
     }
   };

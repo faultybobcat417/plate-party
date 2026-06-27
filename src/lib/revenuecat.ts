@@ -24,18 +24,18 @@ export async function getOfferings(): Promise<PurchasesPackage | null> {
 
 export async function purchasePackage(pkg: PurchasesPackage): Promise<{ success: boolean; transactionId?: string; error?: string }> {
   try {
-    const { customerInfo, productIdentifier } = await Purchases.purchasePackage(pkg);
-    const transaction = customerInfo.allPurchaseDatesByProduct[productIdentifier];
-    return { success: true, transactionId: transaction };
-  } catch (error: any) {
-    if (error.userCancelled) return { success: false, error: "User cancelled purchase." };
-    return { success: false, error: error.message || "Purchase failed." };
+    const { productIdentifier } = await Purchases.purchasePackage(pkg);
+    return { success: true, transactionId: productIdentifier };
+  } catch (error: unknown) {
+    const purchaseError = error as { userCancelled?: boolean; message?: string };
+    if (purchaseError.userCancelled) return { success: false, error: "User cancelled purchase." };
+    return { success: false, error: purchaseError.message || "Purchase failed." };
   }
 }
 
 export async function restorePurchases(): Promise<boolean> {
   const customerInfo = await Purchases.restorePurchases();
-  return Object.keys(customerInfo.allPurchaseDatesByProduct).length > 0;
+  return Object.keys(customerInfo.entitlements.active).length > 0;
 }
 
 export async function getCustomerInfo() { return await Purchases.getCustomerInfo(); }

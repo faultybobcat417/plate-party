@@ -59,7 +59,7 @@ export function TradeScreen() {
       if (member.plateBalance < numAmount) throw new Error(`Need ${numAmount} plates, have ${member.plateBalance}`);
 
       const betId = crypto.randomUUID();
-      await db.insert(bets).values({ id: betId, wagerId: wager.id, userId, optionId: selectedOption, platesWagered: numAmount, placedAt: new Date().toISOString(), status: "pending" });
+      await db.insert(bets).values({ id: betId, wagerId: wager.id, userId, optionId: selectedOption, platesWagered: numAmount, placedAt: new Date(), status: "pending" });
 
       await db.update(partyMembers).set({
         plateBalance: member.plateBalance - numAmount,

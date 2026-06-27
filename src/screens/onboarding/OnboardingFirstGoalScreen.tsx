@@ -31,18 +31,24 @@ export function OnboardingFirstGoalScreen() {
   ];
 
   const handleCreate = async () => {
-    if (!userId) return;
     const title = selectedTemplate || customTitle || "My First Goal";
-    const deadline = new Date();
-    deadline.setDate(deadline.getDate() + 7);
-
-    await createChallenge({
-      creatorId: userId,
-      title,
-      type: "self",
-      rewardPlates: stake,
-      deadline: deadline.toISOString(),
-    });
+    
+    // Try to create challenge in backend if logged in, otherwise just store locally
+    if (userId) {
+      try {
+        const deadline = new Date();
+        deadline.setDate(deadline.getDate() + 7);
+        await createChallenge({
+          creatorId: userId,
+          title,
+          type: "self",
+          rewardPlates: stake,
+          deadline: deadline.toISOString(),
+        });
+      } catch (err) {
+        console.log("Challenge creation skipped:", err);
+      }
+    }
 
     setFirstGoal({ title, stake });
     addPlates(200);

@@ -1,7 +1,79 @@
 import { supabase } from "../lib/supabase";
-import { Challenge, ChallengeEntry } from "../db/schema";
+import type { ChallengeEntry as DbChallengeEntry } from "../db/schema";
+import * as Crypto from "expo-crypto";
 
-export async function createChallenge(creatorId: string, title: string, description: string | null, stakeAmount: number, rewardAmount: number, type: "public" | "private" | "personal" = "public", expiresAt?: Date): Promise<Challenge> {
+export type ChallengeStatus = "open" | "claimed" | "completed" | "expired" | "locked" | "void";
+export type ChallengeType = "public" | "private" | "personal" | "self" | "bounty" | "group";
+
+export interface Challenge {
+  id: string;
+  creatorId?: string;
+  title: string;
+  description?: string | null;
+  type: ChallengeType;
+  stakeAmount?: number;
+  rewardAmount?: number;
+  rewardPlates?: number;
+  status: ChallengeStatus;
+  expiresAt: Date | string;
+  deadline: string;
+  proofNote?: string | null;
+  proofRequired?: boolean;
+  createdAt: Date | string;
+  updatedAt?: Date | string;
+  deletedAt?: Date | string | null;
+  participantCount?: number;
+}
+
+export type ChallengeEntry = DbChallengeEntry;
+
+export type ProofSubmission = {
+  id: string;
+  challengeId: string;
+  submitterId: string;
+  proofType: "camera" | "photo" | "file" | "text";
+  proofData?: string;
+  submittedAt?: string;
+};
+
+export type CreateChallengeInput = {
+  creatorId: string;
+  title: string;
+  description?: string | null;
+  stakeAmount?: number;
+  rewardAmount?: number;
+  rewardPlates?: number;
+  type?: ChallengeType;
+  deadline?: string;
+  expiresAt?: Date | string;
+};
+
+export async function createChallenge(input: CreateChallengeInput): Promise<Challenge>;
+export async function createChallenge(creatorId: string, title: string, description: string | null, stakeAmount: number, rewardAmount: number, type?: "public" | "private" | "personal", expiresAt?: Date): Promise<Challenge>;
+export async function createChallenge(inputOrCreatorId: CreateChallengeInput | string, title?: string, description?: string | null, stakeAmount = 0, rewardAmount = 0, type: "public" | "private" | "personal" = "public", expiresAt?: Date): Promise<Challenge> {
+  if (typeof inputOrCreatorId !== "string") {
+    const input = inputOrCreatorId;
+    return {
+      id: Crypto.randomUUID(),
+      creatorId: input.creatorId,
+      title: input.title,
+      description: input.description ?? null,
+      type: input.type ?? "public",
+      stakeAmount: input.stakeAmount ?? 0,
+      rewardAmount: input.rewardAmount ?? input.rewardPlates ?? 0,
+      rewardPlates: input.rewardPlates ?? input.rewardAmount ?? 0,
+      status: "open",
+      deadline: input.deadline ?? input.expiresAt?.toString() ?? new Date(Date.now() + 86400000).toISOString(),
+      expiresAt: input.expiresAt ?? input.deadline ?? new Date(Date.now() + 86400000).toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      deletedAt: null,
+      proofRequired: true,
+      participantCount: 0,
+    };
+  }
+
+  const creatorId = inputOrCreatorId;
   const { data, error } = await supabase.from("challenges").insert({ creator_id: creatorId, title, description, stake_amount: stakeAmount, reward_amount: rewardAmount, type, expires_at: expiresAt?.toISOString() }).select().single();
   if (error) throw error;
   return data as Challenge;

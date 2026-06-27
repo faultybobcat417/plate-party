@@ -17,6 +17,7 @@ export type PartyDiscoveryCardProps = {
 const vibeEmoji: Record<PublicParty["vibe"], string> = {
   competitive: "🔥",
   casual: "😎",
+  social: "👥",
   charity: "❤️",
   "high-stakes": "💎",
 };

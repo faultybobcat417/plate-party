@@ -25,8 +25,8 @@ type PartyDiscoveryActions = {
   setSearchQuery: (query: string) => Promise<void>;
   setFilters: (filters: PartyFilters) => Promise<void>;
   swipeLeft: () => void;
-  swipeRight: (userId: string) => Promise<void>;
-  superRequest: (userId: string) => Promise<void>;
+  swipeRight: (userId?: string) => Promise<void>;
+  superRequest: (userId?: string) => Promise<void>;
   clearError: () => void;
 };
 
@@ -94,7 +94,7 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
     });
   },
 
-  swipeRight: async (userId: string) => {
+  swipeRight: async (userId = "anonymous") => {
     const { currentIndex, parties, swipeHistory } = get();
     if (currentIndex >= parties.length) return;
     const party = parties[currentIndex];
@@ -114,7 +114,7 @@ export const usePartyDiscoveryStore = create<PartyDiscoveryStore>()((set, get) =
     }
   },
 
-  superRequest: async (userId: string) => {
+  superRequest: async (userId = "anonymous") => {
     const { currentIndex, parties, swipeHistory } = get();
     if (currentIndex >= parties.length) return;
     const party = parties[currentIndex];

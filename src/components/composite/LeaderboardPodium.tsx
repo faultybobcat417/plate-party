@@ -69,7 +69,7 @@ export function LeaderboardPodium({ entries, type }: LeaderboardPodiumProps) {
     if (type === "group") {
       return `${(entry as GroupLeaderboardEntry).memberCount} members`;
     }
-    const streak = (entry as LeaderboardEntry).streak;
+    const streak = (entry as LeaderboardEntry).streak ?? 0;
     return streak > 0 ? `🔥 ${streak} day streak` : "";
   };
 

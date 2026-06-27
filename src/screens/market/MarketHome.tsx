@@ -7,8 +7,7 @@ export function MarketHome() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Markets Removed</Text>
-      <Text style={styles.subtitle}>Prediction markets have been removed from Plate Party.{"
-"}Focus on Challenges, Games, and Parties instead.</Text>
+      <Text style={styles.subtitle}>Prediction markets have been removed from Plate Party.{"\n"}Focus on Challenges, Games, and Parties instead.</Text>
       <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Play" as never)}><Text style={styles.buttonText}>Go to Play</Text></TouchableOpacity>
     </View>
   );

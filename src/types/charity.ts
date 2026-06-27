@@ -5,7 +5,9 @@ export type CharityCategory =
   | "environment"
   | "hunger"
   | "animals"
-  | "disaster";
+  | "disaster"
+  | "children"
+  | "arts";
 
 export interface CharityOrg {
   id: string;

@@ -118,7 +118,7 @@ export function WagerDetailScreen({ route, navigation }: Props) {
         <Text style={styles.question}>{wagerData.question}</Text>
 
         <View style={styles.meta}>
-          <CountdownTimer deadline={wagerData.deadline} />
+          <CountdownTimer deadline={wagerData.deadline ? wagerData.deadline.toISOString() : new Date().toISOString()} />
           <Text style={styles.betCount}>{totalBets} bets placed</Text>
         </View>
 

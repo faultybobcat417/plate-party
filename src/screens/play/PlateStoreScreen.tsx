@@ -38,8 +38,7 @@ export function PlateStoreScreen() {
         {error && <Text style={styles.errorText}>{error}</Text>}
       </View>
       <TouchableOpacity style={styles.restoreLink} onPress={handleRestore}><Text style={styles.restoreText}>Restore Purchases</Text></TouchableOpacity>
-      <Text style={styles.legalText}>Plates are virtual currency for entertainment purposes only.{"
-"}They cannot be exchanged for real money or transferred outside the app.</Text>
+      <Text style={styles.legalText}>Plates are virtual currency for entertainment purposes only.{"\n"}They cannot be exchanged for real money or transferred outside the app.</Text>
     </View>
   );
 }

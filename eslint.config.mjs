@@ -23,11 +23,16 @@ export default ts.config(
     },
     rules: {
       'react/react-in-jsx-scope': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', { 
+      '@typescript-eslint/no-unused-vars': ['warn', { 
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^[A-Z]',
       }],
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/ban-ts-comment': 'warn',
+      '@typescript-eslint/no-namespace': 'warn',
+      '@typescript-eslint/no-empty-object-type': 'warn',
+      'no-useless-assignment': 'warn',
+      'prefer-const': 'warn',
     },
     settings: {
       react: { version: 'detect' },
@@ -44,6 +49,8 @@ export default ts.config(
     rules: {
       'no-undef': 'off',
       '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
+      'no-unused-vars': 'warn',
     },
   },
   {

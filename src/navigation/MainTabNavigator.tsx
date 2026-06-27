@@ -6,7 +6,6 @@ import { ActivityScreen } from "../screens/activity/ActivityScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { colors, typography } from "../theme";
 import FeedStackNavigator from "./FeedStackNavigator";
-import { MarketStackNavigator } from "./MarketStackNavigator";
 import { PartyStackNavigator } from "./PartyStackNavigator";
 import { PlayStackNavigator } from "./PlayStackNavigator";
 import { ProfileStackNavigator } from "./ProfileStackNavigator";
@@ -62,10 +61,10 @@ export function MainTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="MarketTab"
-        component={MarketStackNavigator}
+        name="PlayTab"
+        component={PlayStackNavigator}
         options={{
-          tabBarLabel: ({ focused }) => <TabIcon label="Market" focused={focused} />,
+          tabBarLabel: ({ focused }) => <PlayTabIcon focused={focused} />,
         }}
       />
       <Tab.Screen
@@ -73,13 +72,6 @@ export function MainTabNavigator() {
         component={PartyStackNavigator}
         options={{
           tabBarLabel: ({ focused }) => <TabIcon label="Party" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name="PlayTab"
-        component={PlayStackNavigator}
-        options={{
-          tabBarLabel: ({ focused }) => <PlayTabIcon focused={focused} />,
         }}
       />
       <Tab.Screen
