@@ -1,53 +1,125 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useUserStore } from '../../stores/useUserStore';
-import { colors, spacing, typography } from '../../theme';
+import React, { useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useUserStore } from "../../stores/useUserStore";
+import { useNavigation } from "@react-navigation/native";
 
-export function EditProfileScreen() {
+export default function EditProfileScreen() {
+  const { profile, userId } = useCurrentUser();
+  const { updateProfile } = useUserStore();
   const navigation = useNavigation();
-  const { user } = useUserStore();
-  const [name, setName] = useState(user?.name || '');
-  const [username, setUsername] = useState(user?.username || '');
-  const [saving, setSaving] = useState(false);
+
+  const [displayName, setDisplayName] = useState(profile?.displayName || "");
+  const [username, setUsername] = useState(profile?.username || "");
+  const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
-    setSaving(true);
+    if (!userId) {
+      Alert.alert("Error", "You must be signed in to edit your profile.");
+      return;
+    }
+
+    if (!displayName.trim()) {
+      Alert.alert("Error", "Display name is required.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      Alert.alert('Saved', 'Profile updated successfully.');
+      await updateProfile(userId, {
+        displayName: displayName.trim(),
+        username: username.trim() || undefined,
+      });
+      Alert.alert("Success", "Profile updated successfully.");
       navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save profile.');
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to update profile.");
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.linen[50], padding: spacing[3] }}>
-      <Text style={{ fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, color: colors.ink[900], marginBottom: spacing[3] }}>Edit Profile</Text>
-      
-      <Text style={{ fontSize: typography.sizes.sm, color: colors.ink[400], marginBottom: spacing[1] }}>Display Name</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Edit Profile</Text>
+
+      <Text style={styles.label}>Display Name</Text>
       <TextInput
-        value={name}
-        onChangeText={setName}
-        style={{ backgroundColor: colors.linen[100], padding: spacing[2], borderRadius: 8, fontSize: typography.sizes.base, color: colors.ink[900], marginBottom: spacing[3] }}
+        style={styles.input}
+        value={displayName}
+        onChangeText={setDisplayName}
+        placeholder="Enter display name"
+        placeholderTextColor="#666"
+        maxLength={50}
       />
 
-      <Text style={{ fontSize: typography.sizes.sm, color: colors.ink[400], marginBottom: spacing[1] }}>Username</Text>
+      <Text style={styles.label}>Username</Text>
       <TextInput
+        style={styles.input}
         value={username}
         onChangeText={setUsername}
-        style={{ backgroundColor: colors.linen[100], padding: spacing[2], borderRadius: 8, fontSize: typography.sizes.base, color: colors.ink[900], marginBottom: spacing[3] }}
+        placeholder="Enter username"
+        placeholderTextColor="#666"
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={30}
       />
 
       <TouchableOpacity
+        style={[styles.button, loading && styles.buttonDisabled]}
         onPress={handleSave}
-        disabled={saving}
-        style={{ backgroundColor: colors.gold, padding: spacing[3], borderRadius: 8, alignItems: 'center', marginTop: spacing[2] }}
+        disabled={loading}
       >
-        <Text style={{ fontSize: typography.sizes.base, fontWeight: 'bold', color: '#FFFFFF' }}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+        {loading ? (
+          <ActivityIndicator color="#0a0a0a" />
+        ) : (
+          <Text style={styles.buttonText}>Save Changes</Text>
+        )}
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0a0a0a",
+    padding: 24,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#FFD700",
+    marginBottom: 24,
+  },
+  label: {
+    fontSize: 14,
+    color: "#888",
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: "#1a1a1a",
+    borderWidth: 1,
+    borderColor: "#333",
+    borderRadius: 12,
+    padding: 16,
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  button: {
+    backgroundColor: "#FFD700",
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: "#0a0a0a",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+});

@@ -1,24 +1,25 @@
-import { useState, useEffect } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "../context/AuthContext";
+import { useUserStore } from "../stores/useUserStore";
+import { useEffect } from "react";
 
-export function useCurrentUser(): { userId: string | null; isLoading: boolean } {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export function useCurrentUser() {
+  const { user, loading: authLoading } = useAuth();
+  const { profile, loading: profileLoading, fetchProfile } = useUserStore();
 
   useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem("current_user_id")
-      .then((id) => {
-        if (!cancelled) {
-          setUserId(id);
-          setIsLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
+    if (user?.id && !profile) {
+      fetchProfile(user.id);
+    }
+  }, [user?.id, profile, fetchProfile]);
 
-  return { userId, isLoading };
+  return {
+    userId: user?.id ?? null,
+    profile,
+    isAuthenticated: !!user,
+    isAnonymous: user?.app_metadata?.provider === "anonymous",
+    loading: authLoading || profileLoading,
+    refreshProfile: () => {
+      if (user?.id) fetchProfile(user.id);
+    },
+  };
 }

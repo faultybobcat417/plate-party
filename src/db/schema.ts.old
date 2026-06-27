@@ -1,0 +1,977 @@
+import { relations, sql } from "drizzle-orm";
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+
+export type IsoTimestamp = string;
+export type Uuid = string;
+export type HybridLogicalClock = string;
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export type JsonObject = { [key: string]: JsonValue };
+
+export const INITIAL_MEMBER_PLATES = 10;
+export const DEFAULT_WAGER_STAKE_PLATES = 1;
+
+export const partyMemberRoles = ["host", "member"] as const;
+export type PartyMemberRole = (typeof partyMemberRoles)[number];
+
+export const wagerStatuses = ["open", "locked", "resolved", "void"] as const;
+export type WagerStatus = (typeof wagerStatuses)[number];
+
+export const oracleTypes = ["manual", "weather", "crypto"] as const;
+export type OracleType = (typeof oracleTypes)[number];
+
+export const oracleStatuses = [
+  "not_required",
+  "pending",
+  "validated",
+  "failed",
+] as const;
+export type OracleStatus = (typeof oracleStatuses)[number];
+
+export const naPolicies = ["refund", "send_to_pool"] as const;
+export type NaPolicy = (typeof naPolicies)[number];
+
+export const resolutionKinds = ["manual", "oracle", "na"] as const;
+export type ResolutionKind = (typeof resolutionKinds)[number];
+
+export const betStatuses = ["pending", "locked", "won", "lost", "void"] as const;
+export type BetStatus = (typeof betStatuses)[number];
+
+export const poolTransactionReasons = [
+  "wager_loss",
+  "na_penalty",
+  "manual_adjustment",
+] as const;
+export type PoolTransactionReason = (typeof poolTransactionReasons)[number];
+
+export const paymentProviders = ["venmo", "cash_app", "paypal", "manual"] as const;
+export type PaymentProvider = (typeof paymentProviders)[number];
+
+export const ledgerAccountTypes = [
+  "member_available",
+  "wager_escrow",
+  "charity_pool",
+] as const;
+export type LedgerAccountType = (typeof ledgerAccountTypes)[number];
+
+export const ledgerSourceTables = [
+  "bets",
+  "pool_transactions",
+  "ious",
+  "manual_adjustments",
+] as const;
+export type LedgerSourceTable = (typeof ledgerSourceTables)[number];
+
+export const challengeTypes = ["self", "bounty", "group"] as const;
+export type ChallengeType = (typeof challengeTypes)[number];
+
+export const challengeStatuses = ["open", "claimed", "completed", "expired"] as const;
+export type ChallengeStatus = (typeof challengeStatuses)[number];
+
+export const syncTableNames = [
+  "users",
+  "parties",
+  "party_members",
+  "wagers",
+  "wager_options",
+  "bets",
+  "pool_transactions",
+  "ious",
+  "ledger_entries",
+  "challenges",
+  "meat_posts",
+  "meat_interactions",
+  "stake_posts",
+  "stake_entries",
+  "game_records",
+] as const;
+export type SyncTableName = (typeof syncTableNames)[number];
+
+export const syncOperations = ["insert", "update", "delete", "upsert"] as const;
+export type SyncOperation = (typeof syncOperations)[number];
+
+export const syncOutboxStatuses = [
+  "pending",
+  "sending",
+  "sent",
+  "failed",
+  "conflicted",
+] as const;
+export type SyncOutboxStatus = (typeof syncOutboxStatuses)[number];
+
+export const meatPostStatuses = ["active", "paused", "expired"] as const;
+export type MeatPostStatus = (typeof meatPostStatuses)[number];
+
+export const meatInteractionTypes = ["like", "comment", "dm"] as const;
+export type MeatInteractionType = (typeof meatInteractionTypes)[number];
+
+export const stakePostStatuses = ["open", "locked", "resolved", "cancelled"] as const;
+export type StakePostStatus = (typeof stakePostStatuses)[number];
+
+const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
+
+type CryptoLike = {
+  randomUUID?: () => string;
+  getRandomValues?: (bytes: Uint8Array) => Uint8Array;
+};
+
+const getCrypto = (): CryptoLike | undefined =>
+  (globalThis as typeof globalThis & { crypto?: CryptoLike }).crypto;
+
+const randomByte = (): number => Math.floor(Math.random() * 256);
+
+const createRandomBytes = (length: number): Uint8Array => {
+  const bytes = new Uint8Array(length);
+  const crypto = getCrypto();
+
+  if (crypto?.getRandomValues) {
+    return crypto.getRandomValues(bytes);
+  }
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = randomByte();
+  }
+
+  return bytes;
+};
+
+const byteToHex = (byte: number): string => byte.toString(16).padStart(2, "0");
+
+export const createUuid = (): Uuid => {
+  const crypto = getCrypto();
+
+  if (crypto?.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  const bytes = createRandomBytes(16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, byteToHex).join("");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join("-");
+};
+
+export const createDefaultHlc = (): HybridLogicalClock =>
+  `${Date.now().toString(36)}:0:${createUuid()}`;
+
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    displayName: text("display_name").notNull(),
+    avatarColor: text("avatar_color").notNull(),
+    deviceId: text("device_id").notNull(),
+    venmoHandle: text("venmo_handle"),
+    cashAppHandle: text("cash_app_handle"),
+    paypalMeHandle: text("paypal_me_handle"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    uniqueIndex("users_device_id_unique").on(table.deviceId),
+    index("users_display_name_idx").on(table.displayName),
+    index("users_deleted_at_idx").on(table.deletedAt),
+  ],
+);
+
+export const parties = sqliteTable(
+  "parties",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    name: text("name").notNull(),
+    inviteCode: text("invite_code").notNull(),
+    charityOrgName: text("charity_org_name").notNull(),
+    charityOrgUrl: text("charity_org_url"),
+    charityPoolPlates: integer("charity_pool_plates")
+      .notNull()
+      .default(0),
+    realMoneyEnabled: integer("real_money_enabled", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    defaultStakePlates: integer("default_stake_plates")
+      .notNull()
+      .default(DEFAULT_WAGER_STAKE_PLATES),
+    createdByUserId: text("created_by_user_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    nextWagerPickerUserId: text("next_wager_picker_user_id")
+      .$type<Uuid>()
+      .references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    archivedAt: text("archived_at").$type<IsoTimestamp>(),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    uniqueIndex("parties_invite_code_unique").on(table.inviteCode),
+    index("parties_created_by_user_id_idx").on(table.createdByUserId),
+    index("parties_next_wager_picker_user_id_idx").on(table.nextWagerPickerUserId),
+    index("parties_archived_at_idx").on(table.archivedAt),
+    check("parties_charity_pool_plates_nonnegative", sql`${table.charityPoolPlates} >= 0`),
+    check("parties_default_stake_plates_positive", sql`${table.defaultStakePlates} > 0`),
+  ],
+);
+
+export const partyMembers = sqliteTable(
+  "party_members",
+  {
+    partyId: text("party_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => parties.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    userId: text("user_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    role: text("role", { enum: partyMemberRoles }).notNull().default("member"),
+    plateBalance: integer("plate_balance")
+      .notNull()
+      .default(INITIAL_MEMBER_PLATES),
+    reservedPlateBalance: integer("reserved_plate_balance")
+      .notNull()
+      .default(0),
+    currentStreak: integer("current_streak").notNull().default(0),
+    longestStreak: integer("longest_streak").notNull().default(0),
+    totalWins: integer("total_wins").notNull().default(0),
+    totalLosses: integer("total_losses").notNull().default(0),
+    totalPlatesWagered: integer("total_plates_wagered").notNull().default(0),
+    joinedAt: text("joined_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    leftAt: text("left_at").$type<IsoTimestamp>(),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.partyId, table.userId] }),
+    index("party_members_user_id_idx").on(table.userId),
+    index("party_members_party_role_idx").on(table.partyId, table.role),
+    index("party_members_party_balance_idx").on(table.partyId, table.plateBalance),
+    index("party_members_left_at_idx").on(table.leftAt),
+    check("party_members_role_check", sql`${table.role} in ('host', 'member')`),
+    check("party_members_plate_balance_nonnegative", sql`${table.plateBalance} >= 0`),
+    check(
+      "party_members_reserved_plate_balance_nonnegative",
+      sql`${table.reservedPlateBalance} >= 0`,
+    ),
+    check("party_members_current_streak_nonnegative", sql`${table.currentStreak} >= 0`),
+    check("party_members_longest_streak_nonnegative", sql`${table.longestStreak} >= 0`),
+  ],
+);
+
+export const wagers = sqliteTable(
+  "wagers",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    partyId: text("party_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => parties.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    createdByUserId: text("created_by_user_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    question: text("question").notNull(),
+    stakePlates: integer("stake_plates")
+      .notNull()
+      .default(DEFAULT_WAGER_STAKE_PLATES),
+    deadline: text("deadline").$type<IsoTimestamp>().notNull(),
+    status: text("status", { enum: wagerStatuses }).notNull().default("open"),
+    winningOptionId: text("winning_option_id").$type<Uuid>(),
+    realMoneyAmountCents: integer("real_money_amount_cents"),
+    oracleType: text("oracle_type", { enum: oracleTypes }).notNull().default("manual"),
+    oracleConfig: text("oracle_config", { mode: "json" }).$type<JsonObject>(),
+    oracleStatus: text("oracle_status", { enum: oracleStatuses })
+      .notNull()
+      .default("not_required"),
+    oracleResult: text("oracle_result", { mode: "json" }).$type<JsonObject>(),
+    naPolicy: text("na_policy", { enum: naPolicies }).notNull().default("refund"),
+    naPenaltyPlates: integer("na_penalty_plates").notNull().default(0),
+    resolutionKind: text("resolution_kind", { enum: resolutionKinds }),
+    resolutionNote: text("resolution_note"),
+    lockedAt: text("locked_at").$type<IsoTimestamp>(),
+    resolvedAt: text("resolved_at").$type<IsoTimestamp>(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("wagers_party_status_deadline_idx").on(table.partyId, table.status, table.deadline),
+    index("wagers_created_by_user_id_idx").on(table.createdByUserId),
+    index("wagers_winning_option_id_idx").on(table.winningOptionId),
+    index("wagers_deadline_idx").on(table.deadline),
+    uniqueIndex("wagers_one_active_per_party_idx")
+      .on(table.partyId)
+      .where(sql`${table.status} in ('open', 'locked') and ${table.deletedAt} is null`),
+    check("wagers_status_check", sql`${table.status} in ('open', 'locked', 'resolved', 'void')`),
+    check("wagers_stake_plates_positive", sql`${table.stakePlates} > 0`),
+    check(
+      "wagers_real_money_amount_cents_nonnegative",
+      sql`${table.realMoneyAmountCents} is null or ${table.realMoneyAmountCents} >= 0`,
+    ),
+    check(
+      "wagers_oracle_type_check",
+      sql`${table.oracleType} in ('manual', 'weather', 'crypto')`,
+    ),
+    check(
+      "wagers_oracle_status_check",
+      sql`${table.oracleStatus} in ('not_required', 'pending', 'validated', 'failed')`,
+    ),
+    check("wagers_na_policy_check", sql`${table.naPolicy} in ('refund', 'send_to_pool')`),
+    check("wagers_na_penalty_plates_nonnegative", sql`${table.naPenaltyPlates} >= 0`),
+  ],
+);
+
+export const wagerOptions = sqliteTable(
+  "wager_options",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    wagerId: text("wager_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => wagers.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    label: text("label").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("wager_options_wager_id_idx").on(table.wagerId),
+    uniqueIndex("wager_options_wager_sort_order_unique").on(table.wagerId, table.sortOrder),
+    check("wager_options_sort_order_nonnegative", sql`${table.sortOrder} >= 0`),
+  ],
+);
+
+export const bets = sqliteTable(
+  "bets",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    wagerId: text("wager_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => wagers.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    userId: text("user_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    optionId: text("option_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => wagerOptions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    platesWagered: integer("plates_wagered").notNull(),
+    realMoneyAmountCents: integer("real_money_amount_cents"),
+    placedAt: text("placed_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    lockedAt: text("locked_at").$type<IsoTimestamp>(),
+    resolvedAt: text("resolved_at").$type<IsoTimestamp>(),
+    status: text("status", { enum: betStatuses }).notNull().default("pending"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    uniqueIndex("bets_wager_user_unique").on(table.wagerId, table.userId),
+    index("bets_wager_status_idx").on(table.wagerId, table.status),
+    index("bets_user_id_idx").on(table.userId),
+    index("bets_option_id_idx").on(table.optionId),
+    index("bets_placed_at_idx").on(table.placedAt),
+    index("bets_wager_user_idx").on(table.wagerId, table.userId),
+    check("bets_status_check", sql`${table.status} in ('pending', 'locked', 'won', 'lost', 'void')`),
+    check("bets_plates_wagered_positive", sql`${table.platesWagered} > 0`),
+    check(
+      "bets_real_money_amount_cents_nonnegative",
+      sql`${table.realMoneyAmountCents} is null or ${table.realMoneyAmountCents} >= 0`,
+    ),
+  ],
+);
+
+export const poolTransactions = sqliteTable(
+  "pool_transactions",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    partyId: text("party_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => parties.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    wagerId: text("wager_id")
+      .$type<Uuid>()
+      .references(() => wagers.id, { onDelete: "set null", onUpdate: "cascade" }),
+    fromUserId: text("from_user_id")
+      .$type<Uuid>()
+      .references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    plateAmount: integer("plate_amount").notNull(),
+    reason: text("reason", { enum: poolTransactionReasons })
+      .notNull()
+      .default("wager_loss"),
+    note: text("note"),
+    timestamp: text("timestamp").$type<IsoTimestamp>().notNull().default(nowIso),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("pool_transactions_party_timestamp_idx").on(table.partyId, table.timestamp),
+    index("pool_transactions_wager_id_idx").on(table.wagerId),
+    index("pool_transactions_from_user_id_idx").on(table.fromUserId),
+    check("pool_transactions_plate_amount_positive", sql`${table.plateAmount} > 0`),
+    check(
+      "pool_transactions_reason_check",
+      sql`${table.reason} in ('wager_loss', 'na_penalty', 'manual_adjustment')`,
+    ),
+  ],
+);
+
+export const ious = sqliteTable(
+  "ious",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    partyId: text("party_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => parties.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    fromUserId: text("from_user_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    toUserId: text("to_user_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    wagerId: text("wager_id")
+      .$type<Uuid>()
+      .references(() => wagers.id, { onDelete: "set null", onUpdate: "cascade" }),
+    dollarAmountCents: integer("dollar_amount_cents").notNull(),
+    paymentProvider: text("payment_provider", { enum: paymentProviders }).default("manual"),
+    externalPaymentRef: text("external_payment_ref"),
+    settled: integer("settled", { mode: "boolean" }).notNull().default(false),
+    settledAt: text("settled_at").$type<IsoTimestamp>(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("ious_party_settled_idx").on(table.partyId, table.settled),
+    index("ious_from_user_id_idx").on(table.fromUserId),
+    index("ious_to_user_id_idx").on(table.toUserId),
+    index("ious_wager_id_idx").on(table.wagerId),
+    index("ious_from_to_idx").on(table.fromUserId, table.toUserId),
+    check("ious_dollar_amount_cents_positive", sql`${table.dollarAmountCents} > 0`),
+    check("ious_distinct_users_check", sql`${table.fromUserId} <> ${table.toUserId}`),
+    check(
+      "ious_payment_provider_check",
+      sql`${table.paymentProvider} is null or ${table.paymentProvider} in ('venmo', 'cash_app', 'paypal', 'manual')`,
+    ),
+  ],
+);
+
+export const ledgerEntries = sqliteTable(
+  "ledger_entries",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    transactionId: text("transaction_id").$type<Uuid>().notNull(),
+    partyId: text("party_id")
+      .$type<Uuid>()
+      .notNull()
+      .references(() => parties.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    wagerId: text("wager_id")
+      .$type<Uuid>()
+      .references(() => wagers.id, { onDelete: "set null", onUpdate: "cascade" }),
+    betId: text("bet_id")
+      .$type<Uuid>()
+      .references(() => bets.id, { onDelete: "set null", onUpdate: "cascade" }),
+    poolTransactionId: text("pool_transaction_id")
+      .$type<Uuid>()
+      .references(() => poolTransactions.id, { onDelete: "set null", onUpdate: "cascade" }),
+    iouId: text("iou_id")
+      .$type<Uuid>()
+      .references(() => ious.id, { onDelete: "set null", onUpdate: "cascade" }),
+    sourceTable: text("source_table", { enum: ledgerSourceTables }).notNull(),
+    sourceId: text("source_id").$type<Uuid>().notNull(),
+    accountType: text("account_type", { enum: ledgerAccountTypes }).notNull(),
+    accountId: text("account_id").notNull(),
+    plateDelta: integer("plate_delta").notNull(),
+    memo: text("memo"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id"),
+  },
+  (table) => [
+    index("ledger_entries_party_created_at_idx").on(table.partyId, table.createdAt),
+    index("ledger_entries_transaction_id_idx").on(table.transactionId),
+    index("ledger_entries_source_idx").on(table.sourceTable, table.sourceId),
+    index("ledger_entries_account_idx").on(table.accountType, table.accountId),
+    index("ledger_entries_party_account_idx").on(table.partyId, table.accountType, table.accountId),
+    uniqueIndex("ledger_entries_source_account_unique").on(
+      table.sourceTable,
+      table.sourceId,
+      table.accountType,
+      table.accountId,
+    ),
+    check("ledger_entries_plate_delta_nonzero", sql`${table.plateDelta} <> 0`),
+    check(
+      "ledger_entries_account_type_check",
+      sql`${table.accountType} in ('member_available', 'wager_escrow', 'charity_pool')`,
+    ),
+    check(
+      "ledger_entries_source_table_check",
+      sql`${table.sourceTable} in ('bets', 'pool_transactions', 'ious', 'manual_adjustments')`,
+    ),
+  ],
+);
+
+export const challenges = sqliteTable(
+  "challenges",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    type: text("type", { enum: challengeTypes }).notNull(),
+    rewardPlates: integer("reward_plates").notNull(),
+    deadline: text("deadline").$type<IsoTimestamp>().notNull(),
+    status: text("status", { enum: challengeStatuses }).notNull().default("open"),
+    creatorId: text("creator_id").$type<Uuid>().notNull(),
+    completerId: text("completer_id").$type<Uuid>(),
+    proofImageUrl: text("proof_image_url"),
+    proofNote: text("proof_note"),
+    claimedAt: text("claimed_at").$type<IsoTimestamp>(),
+    completedAt: text("completed_at").$type<IsoTimestamp>(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("challenges_status_idx").on(table.status),
+    index("challenges_creator_idx").on(table.creatorId),
+    index("challenges_deadline_idx").on(table.deadline),
+  ]
+);
+
+export const syncOutbox = sqliteTable(
+  "sync_outbox",
+  {
+    id: text("id").$type<Uuid>().primaryKey().$defaultFn(createUuid),
+    tableName: text("table_name", { enum: syncTableNames }).notNull(),
+    recordId: text("record_id").notNull(),
+    operation: text("operation", { enum: syncOperations }).notNull(),
+    payload: text("payload", { mode: "json" }).$type<JsonObject>().notNull(),
+    baseHlc: text("base_hlc").$type<HybridLogicalClock>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    deviceId: text("device_id").notNull(),
+    status: text("status", { enum: syncOutboxStatuses }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    sentAt: text("sent_at").$type<IsoTimestamp>(),
+  },
+  (table) => [
+    uniqueIndex("sync_outbox_hlc_unique").on(table.hlc),
+    index("sync_outbox_status_created_at_idx").on(table.status, table.createdAt),
+    index("sync_outbox_table_record_idx").on(table.tableName, table.recordId),
+    index("sync_outbox_device_status_idx").on(table.deviceId, table.status),
+    index("sync_outbox_hlc_status_idx").on(table.hlc, table.status),
+    check(
+      "sync_outbox_table_name_check",
+      sql`${table.tableName} in ('users', 'parties', 'party_members', 'wagers', 'wager_options', 'bets', 'pool_transactions', 'ious', 'ledger_entries', 'challenges', 'meat_posts', 'meat_interactions', 'stake_posts', 'stake_entries')`,
+    ),
+    check(
+      "sync_outbox_operation_check",
+      sql`${table.operation} in ('insert', 'update', 'delete', 'upsert')`,
+    ),
+    check(
+      "sync_outbox_status_check",
+      sql`${table.status} in ('pending', 'sending', 'sent', 'failed', 'conflicted')`,
+    ),
+    check("sync_outbox_attempts_nonnegative", sql`${table.attempts} >= 0`),
+  ],
+);
+
+export const meatPosts = sqliteTable(
+  "meat_posts",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    creatorId: text("creator_id").$type<Uuid>().notNull(),
+    caption: text("caption").notNull(),
+    bioSnippet: text("bio_snippet"),
+    plateCost: integer("plate_cost").notNull(),
+    imageUrl: text("image_url"),
+    likes: integer("likes").notNull().default(0),
+    comments: integer("comments").notNull().default(0),
+    status: text("status", { enum: meatPostStatuses }).notNull().default("active"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("meat_posts_creator_idx").on(table.creatorId),
+    index("meat_posts_status_idx").on(table.status),
+    index("meat_posts_created_at_idx").on(table.createdAt),
+  ]
+);
+
+export const meatInteractions = sqliteTable(
+  "meat_interactions",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    postId: text("post_id").$type<Uuid>().notNull(),
+    userId: text("user_id").$type<Uuid>().notNull(),
+    interactionType: text("interaction_type", { enum: meatInteractionTypes }).notNull(),
+    platesPaid: integer("plates_paid").notNull(),
+    commentText: text("comment_text"),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("meat_interactions_post_idx").on(table.postId),
+    index("meat_interactions_user_idx").on(table.userId),
+  ]
+);
+
+export const stakePosts = sqliteTable(
+  "stake_posts",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    creatorId: text("creator_id").$type<Uuid>().notNull(),
+    content: text("content").notNull(),
+    targetPlates: integer("target_plates").notNull(),
+    totalStaked: integer("total_staked").notNull().default(0),
+    participantCount: integer("participant_count").notNull().default(0),
+    deadline: text("deadline").$type<IsoTimestamp>().notNull(),
+    status: text("status", { enum: stakePostStatuses }).notNull().default("open"),
+    optionsJson: text("options_json", { mode: "json" }).$type<{ label: string; staked: number }[]>().notNull(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    updatedAt: text("updated_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    deletedAt: text("deleted_at").$type<IsoTimestamp>(),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("stake_posts_creator_idx").on(table.creatorId),
+    index("stake_posts_status_idx").on(table.status),
+    index("stake_posts_deadline_idx").on(table.deadline),
+  ]
+);
+
+export const stakeEntries = sqliteTable(
+  "stake_entries",
+  {
+    id: text("id").$type<Uuid>().notNull().primaryKey(),
+    postId: text("post_id").$type<Uuid>().notNull(),
+    userId: text("user_id").$type<Uuid>().notNull(),
+    optionIndex: integer("option_index").notNull(),
+    platesStaked: integer("plates_staked").notNull(),
+    createdAt: text("created_at").$type<IsoTimestamp>().notNull().default(nowIso),
+    hlc: text("hlc").$type<HybridLogicalClock>().notNull().$defaultFn(createDefaultHlc),
+    lastModifiedByDeviceId: text("last_modified_by_device_id").$type<Uuid>(),
+  },
+  (table) => [
+    index("stake_entries_post_idx").on(table.postId),
+    index("stake_entries_user_idx").on(table.userId),
+  ]
+);
+
+// ─── EXISTING RELATIONS ─────────────────────────────────────────────────
+
+export const usersRelations = relations(users, ({ many }) => ({
+  createdParties: many(parties, { relationName: "party_creator" }),
+  memberships: many(partyMembers),
+  createdWagers: many(wagers),
+  bets: many(bets),
+  poolTransactions: many(poolTransactions),
+  iousOwed: many(ious, { relationName: "iou_from_user" }),
+  iousReceivable: many(ious, { relationName: "iou_to_user" }),
+  // NEW: Added by AGENT 1
+  challengesCreated: many(challenges, { relationName: "challenge_creator" }),
+  challengesCompleted: many(challenges, { relationName: "challenge_completer" }),
+  meatPosts: many(meatPosts),
+  meatInteractions: many(meatInteractions),
+  stakePosts: many(stakePosts),
+  stakeEntries: many(stakeEntries),
+}));
+
+export const partiesRelations = relations(parties, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [parties.createdByUserId],
+    references: [users.id],
+    relationName: "party_creator",
+  }),
+  nextWagerPicker: one(users, {
+    fields: [parties.nextWagerPickerUserId],
+    references: [users.id],
+  }),
+  members: many(partyMembers),
+  wagers: many(wagers),
+  poolTransactions: many(poolTransactions),
+  ious: many(ious),
+  ledgerEntries: many(ledgerEntries),
+}));
+
+export const partyMembersRelations = relations(partyMembers, ({ one }) => ({
+  party: one(parties, {
+    fields: [partyMembers.partyId],
+    references: [parties.id],
+  }),
+  user: one(users, {
+    fields: [partyMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const wagersRelations = relations(wagers, ({ one, many }) => ({
+  party: one(parties, {
+    fields: [wagers.partyId],
+    references: [parties.id],
+  }),
+  creator: one(users, {
+    fields: [wagers.createdByUserId],
+    references: [users.id],
+  }),
+  options: many(wagerOptions),
+  bets: many(bets),
+  poolTransactions: many(poolTransactions),
+  ious: many(ious),
+  ledgerEntries: many(ledgerEntries),
+}));
+
+export const wagerOptionsRelations = relations(wagerOptions, ({ one, many }) => ({
+  wager: one(wagers, {
+    fields: [wagerOptions.wagerId],
+    references: [wagers.id],
+  }),
+  bets: many(bets),
+}));
+
+export const betsRelations = relations(bets, ({ one, many }) => ({
+  wager: one(wagers, {
+    fields: [bets.wagerId],
+    references: [wagers.id],
+  }),
+  user: one(users, {
+    fields: [bets.userId],
+    references: [users.id],
+  }),
+  option: one(wagerOptions, {
+    fields: [bets.optionId],
+    references: [wagerOptions.id],
+  }),
+  ledgerEntries: many(ledgerEntries),
+}));
+
+export const poolTransactionsRelations = relations(poolTransactions, ({ one, many }) => ({
+  party: one(parties, {
+    fields: [poolTransactions.partyId],
+    references: [parties.id],
+  }),
+  wager: one(wagers, {
+    fields: [poolTransactions.wagerId],
+    references: [wagers.id],
+  }),
+  fromUser: one(users, {
+    fields: [poolTransactions.fromUserId],
+    references: [users.id],
+  }),
+  ledgerEntries: many(ledgerEntries),
+}));
+
+export const iousRelations = relations(ious, ({ one, many }) => ({
+  party: one(parties, {
+    fields: [ious.partyId],
+    references: [parties.id],
+  }),
+  fromUser: one(users, {
+    fields: [ious.fromUserId],
+    references: [users.id],
+    relationName: "iou_from_user",
+  }),
+  toUser: one(users, {
+    fields: [ious.toUserId],
+    references: [users.id],
+    relationName: "iou_to_user",
+  }),
+  wager: one(wagers, {
+    fields: [ious.wagerId],
+    references: [wagers.id],
+  }),
+  ledgerEntries: many(ledgerEntries),
+}));
+
+export const ledgerEntriesRelations = relations(ledgerEntries, ({ one }) => ({
+  party: one(parties, {
+    fields: [ledgerEntries.partyId],
+    references: [parties.id],
+  }),
+  wager: one(wagers, {
+    fields: [ledgerEntries.wagerId],
+    references: [wagers.id],
+  }),
+  bet: one(bets, {
+    fields: [ledgerEntries.betId],
+    references: [bets.id],
+  }),
+  poolTransaction: one(poolTransactions, {
+    fields: [ledgerEntries.poolTransactionId],
+    references: [poolTransactions.id],
+  }),
+  iou: one(ious, {
+    fields: [ledgerEntries.iouId],
+    references: [ious.id],
+  }),
+}));
+
+// ─── NEW RELATIONS (Added by AGENT 1) ───────────────────────────────────
+
+export const challengesRelations = relations(challenges, ({ one }) => ({
+  creator: one(users, {
+    fields: [challenges.creatorId],
+    references: [users.id],
+    relationName: "challenge_creator",
+  }),
+  completer: one(users, {
+    fields: [challenges.completerId],
+    references: [users.id],
+    relationName: "challenge_completer",
+  }),
+}));
+
+export const meatPostsRelations = relations(meatPosts, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [meatPosts.creatorId],
+    references: [users.id],
+  }),
+  interactions: many(meatInteractions),
+}));
+
+export const meatInteractionsRelations = relations(meatInteractions, ({ one }) => ({
+  post: one(meatPosts, {
+    fields: [meatInteractions.postId],
+    references: [meatPosts.id],
+  }),
+  user: one(users, {
+    fields: [meatInteractions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const stakePostsRelations = relations(stakePosts, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [stakePosts.creatorId],
+    references: [users.id],
+  }),
+  entries: many(stakeEntries),
+}));
+
+export const stakeEntriesRelations = relations(stakeEntries, ({ one }) => ({
+  post: one(stakePosts, {
+    fields: [stakeEntries.postId],
+    references: [stakePosts.id],
+  }),
+  user: one(users, {
+    fields: [stakeEntries.userId],
+    references: [users.id],
+  }),
+}));
+
+// ─── EXPORTS ─────────────────────────────────────────────────────────────
+
+export const schema = {
+  users,
+  parties,
+  partyMembers,
+  wagers,
+  wagerOptions,
+  bets,
+  poolTransactions,
+  ious,
+  ledgerEntries,
+  syncOutbox,
+  usersRelations,
+  partiesRelations,
+  partyMembersRelations,
+  wagersRelations,
+  wagerOptionsRelations,
+  betsRelations,
+  poolTransactionsRelations,
+  iousRelations,
+  ledgerEntriesRelations,
+  // NEW: Added by AGENT 1
+  challenges,
+  meatPosts,
+  meatInteractions,
+  stakePosts,
+  stakeEntries,
+  challengesRelations,
+  meatPostsRelations,
+  meatInteractionsRelations,
+  stakePostsRelations,
+  stakeEntriesRelations,
+};
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Party = typeof parties.$inferSelect;
+export type NewParty = typeof parties.$inferInsert;
+export type PartyMember = typeof partyMembers.$inferSelect;
+export type NewPartyMember = typeof partyMembers.$inferInsert;
+export type Wager = typeof wagers.$inferSelect;
+export type NewWager = typeof wagers.$inferInsert;
+export type WagerOption = typeof wagerOptions.$inferSelect;
+export type NewWagerOption = typeof wagerOptions.$inferInsert;
+export type Bet = typeof bets.$inferSelect;
+export type NewBet = typeof bets.$inferInsert;
+export type PoolTransaction = typeof poolTransactions.$inferSelect;
+export type NewPoolTransaction = typeof poolTransactions.$inferInsert;
+export type Iou = typeof ious.$inferSelect;
+export type NewIou = typeof ious.$inferInsert;
+export type LedgerEntry = typeof ledgerEntries.$inferSelect;
+export type NewLedgerEntry = typeof ledgerEntries.$inferInsert;
+export type SyncOutboxEntry = typeof syncOutbox.$inferSelect;
+export type NewSyncOutboxEntry = typeof syncOutbox.$inferInsert;
+export type Challenge = typeof challenges.$inferSelect;
+export type NewChallenge = typeof challenges.$inferInsert;
+export type MeatPost = typeof meatPosts.$inferSelect;
+export type NewMeatPost = typeof meatPosts.$inferInsert;
+export type MeatInteraction = typeof meatInteractions.$inferSelect;
+export type NewMeatInteraction = typeof meatInteractions.$inferInsert;
+export type StakePost = typeof stakePosts.$inferSelect;
+export type NewStakePost = typeof stakePosts.$inferInsert;
+export type StakeEntry = typeof stakeEntries.$inferSelect;
+export type NewStakeEntry = typeof stakeEntries.$inferInsert;

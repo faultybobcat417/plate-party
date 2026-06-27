@@ -1,282 +1,170 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  Alert,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import React, { useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from "react-native";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useUserStore } from "../../stores/useUserStore";
 import { useNavigation } from "@react-navigation/native";
-import { colors, typography, spacing } from "../../theme";
-
-const FAKE_ORGS = [
-  {
-    id: "1",
-    name: "Red Cross",
-    handle: "@redcross",
-    description: "Emergency relief & disaster response worldwide",
-    platesRaised: 12450,
-    supporters: 342,
-    color: "#DC2626",
-    emoji: "🩸",
-  },
-  {
-    id: "2",
-    name: "UNICEF",
-    handle: "@unicef",
-    description: "Children's rights & emergency relief",
-    platesRaised: 28900,
-    supporters: 891,
-    color: "#3B82F6",
-    emoji: "🧸",
-  },
-  {
-    id: "3",
-    name: "WWF",
-    handle: "@wwf",
-    description: "Wildlife conservation & nature protection",
-    platesRaised: 18700,
-    supporters: 567,
-    color: "#10B981",
-    emoji: "🐼",
-  },
-  {
-    id: "4",
-    name: "Feeding America",
-    handle: "@feedingamerica",
-    description: "Hunger relief across the United States",
-    platesRaised: 32100,
-    supporters: 1204,
-    color: "#F59E0B",
-    emoji: "🍞",
-  },
-  {
-    id: "5",
-    name: "St. Jude",
-    handle: "@stjude",
-    description: "Children's research hospital — no family pays",
-    platesRaised: 45600,
-    supporters: 2103,
-    color: "#8B5CF6",
-    emoji: "🏥",
-  },
-];
 
 export default function ProfileScreen() {
+  const { profile, loading, refreshProfile } = useCurrentUser();
   const navigation = useNavigation();
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [plates, setPlates] = useState(0);
-  const [given, setGiven] = useState(0);
-  const [streak, setStreak] = useState(0);
 
-  const handleSelectOrg = (orgId: string) => {
-    setSelectedOrgId(orgId);
-    const org = FAKE_ORGS.find((o) => o.id === orgId);
-    Alert.alert("Organization Selected", `You selected ${org?.name}. Plates you win will support this org.`, [
-      { text: "OK" },
-    ]);
-  };
+  useEffect(() => {
+    refreshProfile();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>No profile found. Please sign in.</Text>
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.neutral[50] }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: spacing[6] }}>
-        {/* Header */}
-        <View style={{ alignItems: "center", paddingVertical: spacing[6] }}>
-          <View
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: colors.primary.base,
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: spacing[3],
-            }}
-          >
-            <Text style={{ fontSize: 32, fontWeight: "bold", color: colors.neutral[0] }}>T</Text>
-          </View>
-          <Text style={{ fontSize: typography.sizes.xl, fontWeight: typography.weights.bold, color: colors.neutral[900] }}>
-            testuser
-          </Text>
-          <Text style={{ fontSize: typography.sizes.base, color: colors.neutral[500] }}>@testuser</Text>
-        </View>
-
-        {/* Stats */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-around",
-            paddingHorizontal: spacing[4],
-            marginBottom: spacing[5],
-          }}
-        >
-          {[
-            { label: "Plates", value: plates },
-            { label: "Given", value: given },
-            { label: "Streak", value: streak },
-          ].map((stat) => (
-            <View key={stat.label} style={{ alignItems: "center" }}>
-              <Text style={{ fontSize: typography.sizes["2xl"], fontWeight: typography.weights.bold, color: colors.primary.base }}>
-                {stat.value}
-              </Text>
-              <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[500], marginTop: spacing[1] }}>
-                {stat.label}
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.avatarContainer}>
+          {profile.avatarUrl ? (
+            <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
+                {(profile.displayName || profile.username || "?").charAt(0).toUpperCase()}
               </Text>
             </View>
-          ))}
+          )}
         </View>
+        <Text style={styles.displayName}>{profile.displayName}</Text>
+        <Text style={styles.username}>@{profile.username}</Text>
+      </View>
 
-        {/* Menu Items */}
-        <View style={{ paddingHorizontal: spacing[4], marginBottom: spacing[5] }}>
-          {[
-            { icon: "✏️", label: "Edit Profile", screen: "EditProfile" },
-            { icon: "⚙️", label: "Settings", screen: "Settings" },
-            { icon: "🏆", label: "Leaderboard", screen: "GiverLeaderboard" },
-          ].map((item) => (
-            <TouchableOpacity
-              key={item.label}
-              onPress={() => (navigation as any).navigate(item.screen)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: colors.neutral[0],
-                borderRadius: 12,
-                padding: spacing[3],
-                marginBottom: spacing[2],
-              }}
-            >
-              <Text style={{ fontSize: 20, marginRight: spacing[3] }}>{item.icon}</Text>
-              <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.medium, color: colors.neutral[900], flex: 1 }}>
-                {item.label}
-              </Text>
-              <Text style={{ fontSize: typography.sizes.base, color: colors.neutral[400] }}>›</Text>
-            </TouchableOpacity>
-          ))}
+      <View style={styles.statsContainer}>
+        <View style={styles.statBox}>
+          <Text style={styles.statValue}>{profile.plates}</Text>
+          <Text style={styles.statLabel}>Plates</Text>
         </View>
+        <View style={styles.statBox}>
+          <Text style={styles.statValue}>{profile.lifetimePurchasedPlates}</Text>
+          <Text style={styles.statLabel}>Purchased</Text>
+        </View>
+      </View>
 
-        {/* Submit Plates CTA */}
+      <View style={styles.section}>
         <TouchableOpacity
-          style={{
-            backgroundColor: colors.primary.base,
-            marginHorizontal: spacing[4],
-            borderRadius: 12,
-            paddingVertical: spacing[4],
-            alignItems: "center",
-            marginBottom: spacing[6],
-          }}
+          style={styles.menuItem}
+          onPress={() => navigation.navigate("EditProfile" as never)}
         >
-          <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.bold, color: colors.neutral[0] }}>
-            🍽 Submit Plates
-          </Text>
+          <Text style={styles.menuText}>Edit Profile</Text>
         </TouchableOpacity>
-
-        {/* Charity Organizations Section */}
-        <View style={{ paddingHorizontal: spacing[4] }}>
-          <Text
-            style={{
-              fontSize: typography.sizes.lg,
-              fontWeight: typography.weights.bold,
-              color: colors.neutral[900],
-              marginBottom: spacing[1],
-            }}
-          >
-            Support a Cause
-          </Text>
-          <Text style={{ fontSize: typography.sizes.base, color: colors.neutral[500], marginBottom: spacing[4] }}>
-            Select an organization. A portion of your winnings goes to them.
-          </Text>
-
-          {FAKE_ORGS.map((org) => {
-            const isSelected = selectedOrgId === org.id;
-            return (
-              <TouchableOpacity
-                key={org.id}
-                onPress={() => handleSelectOrg(org.id)}
-                activeOpacity={0.8}
-                style={{
-                  backgroundColor: colors.neutral[0],
-                  borderRadius: 16,
-                  padding: spacing[4],
-                  marginBottom: spacing[3],
-                  borderWidth: 2,
-                  borderColor: isSelected ? org.color : colors.neutral[0],
-                  shadowColor: colors.neutral[900],
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.06,
-                  shadowRadius: 8,
-                  elevation: 3,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 12,
-                      backgroundColor: org.color + "20",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 24 }}>{org.emoji}</Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: spacing[3] }}>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.bold, color: colors.neutral[900] }}>
-                        {org.name}
-                      </Text>
-                      {isSelected && (
-                        <View
-                          style={{
-                            marginLeft: spacing[2],
-                            backgroundColor: org.color,
-                            borderRadius: 10,
-                            paddingHorizontal: spacing[2],
-                            paddingVertical: 2,
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, fontWeight: typography.weights.bold, color: colors.neutral[0] }}>
-                            SELECTED
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[500] }}>{org.handle}</Text>
-                    <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[600], marginTop: spacing[1] }}>
-                      {org.description}
-                    </Text>
-                  </View>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    marginTop: spacing[3],
-                    paddingTop: spacing[3],
-                    borderTopWidth: 1,
-                    borderTopColor: colors.neutral[100],
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[500] }}>Plates Raised</Text>
-                    <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.bold, color: org.color }}>
-                      {org.platesRaised.toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: typography.sizes.sm, color: colors.neutral[500] }}>Supporters</Text>
-                    <Text style={{ fontSize: typography.sizes.base, fontWeight: typography.weights.bold, color: colors.neutral[900] }}>
-                      {org.supporters.toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate("Settings" as never)}
+        >
+          <Text style={styles.menuText}>Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => navigation.navigate("Ledger" as never)}
+        >
+          <Text style={styles.menuText}>Transaction History</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0a0a0a",
+  },
+  header: {
+    alignItems: "center",
+    padding: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: "#222",
+  },
+  avatarContainer: {
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+  },
+  avatarPlaceholder: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "#FFD700",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: {
+    fontSize: 36,
+    fontWeight: "bold",
+    color: "#0a0a0a",
+  },
+  displayName: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  username: {
+    fontSize: 16,
+    color: "#888",
+  },
+  statsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: "#222",
+  },
+  statBox: {
+    alignItems: "center",
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#FFD700",
+  },
+  statLabel: {
+    fontSize: 14,
+    color: "#888",
+    marginTop: 4,
+  },
+  section: {
+    padding: 16,
+  },
+  menuItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#222",
+  },
+  menuText: {
+    fontSize: 16,
+    color: "#fff",
+  },
+  loadingText: {
+    color: "#888",
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 32,
+  },
+  errorText: {
+    color: "#ff4444",
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 32,
+  },
+});
