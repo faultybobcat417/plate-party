@@ -11,11 +11,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { usePartyStore } from "../../stores/usePartyStore";
 import { colors, spacing, typography } from "../../theme";
 import type { PartyStackParamList } from "../../navigation/types";
 import { ErrorBoundary } from "../../components/common/ErrorBoundary";
+import { AuthModal } from "../../components/auth/AuthModal";
 import { supabase } from "../../lib/supabase";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import type { Party } from "../../db/schema";
 
 export type PartyDiscoveryScreenProps = NativeStackScreenProps<
@@ -24,10 +25,13 @@ export type PartyDiscoveryScreenProps = NativeStackScreenProps<
 >;
 
 export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) {
+  const { userId, isAnonymous } = useCurrentUser();
   const [parties, setParties] = useState<Party[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authVisible, setAuthVisible] = useState(false);
+  const [authReason, setAuthReason] = useState<string | undefined>(undefined);
 
   const loadPublicParties = useCallback(async () => {
     setLoading(true);
@@ -45,7 +49,7 @@ export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) 
       const normalized = (data ?? []).map(normalizeParty);
       setParties(normalized);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load parties");
+      setError(friendlyLoadError(err, "No connection. Check your internet."));
     } finally {
       setLoading(false);
     }
@@ -77,6 +81,15 @@ export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) 
     </Pressable>
   );
 
+  const requireRealAccount = (reason: string, action: () => void) => {
+    if (!userId || isAnonymous) {
+      setAuthReason(reason);
+      setAuthVisible(true);
+      return;
+    }
+    action();
+  };
+
   return (
     <ErrorBoundary>
       <SafeAreaView style={styles.container} edges={["top"]}>
@@ -96,7 +109,9 @@ export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) 
             autoCorrect={false}
           />
           <Pressable
-            onPress={() => navigation.navigate("CreateParty")}
+            accessibilityRole="button"
+            accessibilityLabel="Create party"
+            onPress={() => requireRealAccount("Sign in to create a party and invite friends.", () => navigation.navigate("CreateParty"))}
             style={styles.createBtn}
           >
             <Text style={styles.createBtnText}>+ Create</Text>
@@ -106,7 +121,17 @@ export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) 
         {loading && parties.length === 0 ? (
           <ActivityIndicator color={colors.glaze[500]} style={styles.loader} />
         ) : error ? (
-          <Text style={styles.errorText}>{error}</Text>
+          <View style={styles.errorState}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading parties"
+              onPress={() => void loadPublicParties()}
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
+          </View>
         ) : (
           <FlatList
             data={filtered}
@@ -122,9 +147,34 @@ export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) 
             onRefresh={loadPublicParties}
           />
         )}
+        <View style={styles.footerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Join party"
+            onPress={() => requireRealAccount("Sign in to join a party and save your membership.", () => navigation.navigate("JoinParty", {}))}
+            style={styles.joinBtn}
+          >
+            <Text style={styles.joinBtnText}>Join with Code</Text>
+          </Pressable>
+        </View>
+        <AuthModal
+          visible={authVisible}
+          reason={authReason}
+          onClose={() => setAuthVisible(false)}
+          onSignedIn={() => setAuthVisible(false)}
+        />
       </SafeAreaView>
     </ErrorBoundary>
   );
+}
+
+function friendlyLoadError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const message = error.message.toLocaleLowerCase();
+  if (message.includes("failed to fetch") || message.includes("network") || message.includes("invalid api key")) {
+    return fallback;
+  }
+  return error.message;
 }
 
 function normalizeParty(row: Record<string, unknown>): Party {
@@ -185,6 +235,25 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: "row", gap: spacing[4], marginTop: spacing[3] },
   cardMeta: { fontSize: typography.sizes.xs, color: colors.ash[500] },
   loader: { marginTop: spacing[10] },
-  errorText: { color: colors.wine[400], textAlign: "center", marginTop: spacing[10], fontSize: typography.sizes.base },
+  errorState: { alignItems: "center", gap: spacing[3], paddingHorizontal: spacing[5], paddingTop: spacing[10] },
+  errorText: { color: colors.ash[300], textAlign: "center", fontSize: typography.sizes.base },
+  retryBtn: {
+    alignItems: "center",
+    backgroundColor: colors.glaze[600],
+    borderRadius: 12,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[3],
+  },
+  retryBtnText: { color: colors.white, fontSize: typography.sizes.sm, fontWeight: typography.weights.bold },
   emptyText: { color: colors.ash[500], textAlign: "center", marginTop: spacing[10], fontSize: typography.sizes.base },
+  footerActions: { paddingHorizontal: spacing[5], paddingBottom: spacing[5] },
+  joinBtn: {
+    alignItems: "center",
+    backgroundColor: colors.ink[800],
+    borderColor: colors.ink[700],
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: spacing[3],
+  },
+  joinBtnText: { color: colors.glaze[400], fontSize: typography.sizes.sm, fontWeight: typography.weights.bold },
 });

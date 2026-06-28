@@ -21,6 +21,7 @@ import { RevealScreen } from "../screens/wager/RevealScreen";
 import { PartyDiscoveryScreen } from "../screens/party/PartyDiscoveryScreen";
 import { CharityPoolScreen } from "../screens/charity/CharityPoolScreen";
 import { RealMoneySettleScreen } from "../screens/charity/RealMoneySettleScreen";
+import { colors } from "../theme";
 import type { PartyStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<PartyStackParamList>();
@@ -28,8 +29,11 @@ const Stack = createNativeStackNavigator<PartyStackParamList>();
 export function PartyStackNavigator() {
   return (
     <Stack.Navigator
+      initialRouteName="PartyDiscovery"
       screenOptions={{
         headerShown: true,
+        headerStyle: { backgroundColor: colors.ink[900] },
+        headerTintColor: colors.glaze[500],
       }}
     >
       <Stack.Screen

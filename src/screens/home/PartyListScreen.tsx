@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -14,45 +14,54 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Button } from "../../components/primitives/Button";
 import { Card } from "../../components/primitives/Card";
 import { EmptyState } from "../../components/composite/EmptyState";
+import { AuthModal } from "../../components/auth/AuthModal";
 import { usePartyStore } from "../../stores/usePartyStore";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { colors, spacing, typography } from "../../theme";
-import { loadProfile } from "../../utils/profileStorage";
 import type { PartyStackParamList } from "../../navigation/types";
 
 export type PartyListScreenProps = NativeStackScreenProps<PartyStackParamList, "PartyList">;
 
 export function PartyListScreen({ navigation }: PartyListScreenProps) {
   const { parties, isLoading, error, loadPartiesForUser } = usePartyStore();
-  const [userId, setUserId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function bootstrap() {
-      const profile = await loadProfile();
-      if (!mounted) return;
-
-      setUserId(profile?.id ?? null);
-    }
-
-    void bootstrap();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const { userId, isAnonymous } = useCurrentUser();
+  const [authVisible, setAuthVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      if (userId) {
+      if (userId && !isAnonymous) {
         void loadPartiesForUser(userId);
       }
-    }, [userId, loadPartiesForUser]),
+    }, [userId, isAnonymous, loadPartiesForUser]),
   );
 
   const handleRefresh = async () => {
-    if (!userId) return;
+    if (!userId || isAnonymous) return;
     await loadPartiesForUser(userId);
   };
+
+  if (isAnonymous) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <EmptyState
+          icon="🍽"
+          title="Browse public parties"
+          message="Guests can discover public parties. Sign in to create or join one."
+          actionLabel="Discover Parties"
+          onAction={() => navigation.navigate("PartyDiscovery")}
+        />
+        <View style={styles.emptyActions}>
+          <Button title="Sign In" onPress={() => setAuthVisible(true)} />
+        </View>
+        <AuthModal
+          visible={authVisible}
+          reason="Sign in to create and join parties."
+          onClose={() => setAuthVisible(false)}
+          onSignedIn={() => setAuthVisible(false)}
+        />
+      </SafeAreaView>
+    );
+  }
 
   if (isLoading && parties.length === 0) {
     return (
@@ -85,7 +94,7 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
           <Button
             title="Join Party"
             variant="secondary"
-            onPress={() => navigation.navigate("JoinParty" as any)}
+            onPress={() => navigation.navigate("JoinParty", {})}
           />
         </View>
       </SafeAreaView>
@@ -150,7 +159,7 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
         <Button
           title="Join Party"
           variant="secondary"
-          onPress={() => navigation.navigate("JoinParty" as any)}
+          onPress={() => navigation.navigate("JoinParty", {})}
         />
       </View>
     </SafeAreaView>
@@ -159,7 +168,7 @@ export function PartyListScreen({ navigation }: PartyListScreenProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.linen[100],
+    backgroundColor: colors.ink[900],
     flex: 1,
   },
   centered: {
@@ -184,7 +193,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    color: colors.ink[900],
+    color: colors.white,
     fontSize: typography.sizes["2xl"],
     fontWeight: typography.weights.bold,
   },
@@ -192,6 +201,9 @@ const styles = StyleSheet.create({
     padding: spacing[6],
   },
   card: {
+    backgroundColor: colors.ink[800],
+    borderColor: colors.ink[700],
+    borderWidth: 1,
     marginBottom: spacing[3],
   },
   cardHeader: {
@@ -201,7 +213,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing[1],
   },
   partyName: {
-    color: colors.ink[900],
+    color: colors.white,
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.semibold,
   },
@@ -222,7 +234,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   plates: {
-    color: colors.ink[800],
+    color: colors.gold,
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.bold,
   },

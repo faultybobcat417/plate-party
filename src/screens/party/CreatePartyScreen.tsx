@@ -11,6 +11,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { z } from "zod";
 
 import { Button } from "../../components/primitives/Button";
+import { AuthModal } from "../../components/auth/AuthModal";
 import { Input } from "../../components/primitives/Input";
 import { usePartyStore } from "../../stores/usePartyStore";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -31,11 +32,12 @@ const CreatePartySchema = z.object({
 
 export function CreatePartyScreen({ navigation }: CreatePartyScreenProps) {
   const { createParty, isLoading, error, clearError } = usePartyStore();
-  const { userId } = useCurrentUser();
+  const { userId, isAnonymous } = useCurrentUser();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [authVisible, setAuthVisible] = useState(false);
 
   useEffect(() => {
     return () => clearError();
@@ -45,8 +47,8 @@ export function CreatePartyScreen({ navigation }: CreatePartyScreenProps) {
     clearError();
     setValidationError(null);
 
-    if (!userId) {
-      setValidationError("You must be signed in to create a party.");
+    if (!userId || isAnonymous) {
+      setAuthVisible(true);
       return;
     }
 
@@ -68,7 +70,7 @@ export function CreatePartyScreen({ navigation }: CreatePartyScreenProps) {
     } catch {
       // Error surfaced by store
     }
-  }, [name, description, isPrivate, userId, createParty, clearError, navigation]);
+  }, [name, description, isPrivate, userId, isAnonymous, createParty, clearError, navigation]);
 
   return (
     <ErrorBoundary>
@@ -123,6 +125,12 @@ export function CreatePartyScreen({ navigation }: CreatePartyScreenProps) {
             loading={isLoading}
           />
         </ScrollView>
+        <AuthModal
+          visible={authVisible}
+          reason="Sign in to create a party and keep your invite code."
+          onClose={() => setAuthVisible(false)}
+          onSignedIn={() => setAuthVisible(false)}
+        />
       </SafeAreaView>
     </ErrorBoundary>
   );

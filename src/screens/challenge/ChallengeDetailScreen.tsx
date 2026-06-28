@@ -23,6 +23,7 @@ import {
 } from "../../api/challenges";
 import { Badge, type BadgeVariant } from "../../components/primitives/Badge";
 import { Button } from "../../components/primitives/Button";
+import { AuthModal } from "../../components/auth/AuthModal";
 import type { PartyStackParamList } from "../../navigation/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { colors, spacing, typography } from "../../theme";
@@ -31,13 +32,14 @@ type Props = NativeStackScreenProps<PartyStackParamList, "ChallengeDetail">;
 
 export function ChallengeDetailScreen({ navigation, route }: Props) {
   const { challengeId } = route.params;
-  const { userId } = useCurrentUser();
+  const { userId, isAnonymous } = useCurrentUser();
   const [detail, setDetail] = useState<ChallengeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [winnerPickerOpen, setWinnerPickerOpen] = useState(false);
+  const [authVisible, setAuthVisible] = useState(false);
   const [winnerUserId, setWinnerUserId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
 
@@ -111,6 +113,15 @@ export function ChallengeDetailScreen({ navigation, route }: Props) {
       Alert.alert("Share failed", getMessage(caught, "Could not share this challenge."));
     }
   }, [detail]);
+
+  const enterChallenge = useCallback(() => {
+    if (!detail) return;
+    if (!userId || isAnonymous) {
+      setAuthVisible(true);
+      return;
+    }
+    navigation.navigate("PlaceBet", { challengeId: detail.id });
+  }, [detail, isAnonymous, navigation, userId]);
 
   const openWinnerPicker = useCallback(() => {
     const firstEntry = detail?.entries[0];
@@ -252,7 +263,7 @@ export function ChallengeDetailScreen({ navigation, route }: Props) {
                 <Button
                   title="Enter Challenge"
                   size="lg"
-                  onPress={() => navigation.navigate("PlaceBet", { challengeId: detail.id })}
+                  onPress={enterChallenge}
                 />
               ) : null}
               {canPlay ? (
@@ -302,6 +313,12 @@ export function ChallengeDetailScreen({ navigation, route }: Props) {
         onCancel={() => setWinnerPickerOpen(false)}
         onConfirm={() => void confirmResolution()}
         onSelect={setWinnerUserId}
+      />
+      <AuthModal
+        visible={authVisible}
+        reason="Sign in to enter challenges and wager real plates."
+        onClose={() => setAuthVisible(false)}
+        onSignedIn={() => setAuthVisible(false)}
       />
     </SafeAreaView>
   );

@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,22 +8,20 @@ import {
   Text,
   View,
 } from "react-native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { CommonActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { ChallengeCard } from "../../components/composite/ChallengeCard";
 import { EmptyState } from "../../components/composite/EmptyState";
 import { FeedTopTabs, type FeedTab } from "../../components/composite/FeedTopTabs";
-import { ProofSubmissionSheet } from "../../components/composite/ProofSubmissionSheet";
 import { Button } from "../../components/primitives/Button";
 import { Card } from "../../components/primitives/Card";
+import { AuthModal } from "../../components/auth/AuthModal";
 import { StreakFlame } from "../../components/streak/StreakFlame";
-import { useChallengeStore } from "../../stores/useChallengeStore";
 import { useGoalStore } from "../../stores/useGoalStore";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { colors, spacing, typography } from "../../theme";
-import type { Challenge } from "../../api/challenge";
+import { getPublicActiveChallenges, type ActiveChallenge } from "../../api/challenges";
 import type { FeedStackParamList } from "../../navigation/types";
 import type { Goal } from "../../db/schema";
 
@@ -43,46 +40,58 @@ export function FeedHomeScreen() {
 
 function SteakTab() {
   const navigation = useNavigation<FeedNav>();
-  const {
-    sortedChallenges,
-    pendingProofs,
-    isLoading,
-    error,
-    hasMore,
-    loadChallenges,
-    loadMoreChallenges,
-    submitProof,
-    clearError,
-  } = useChallengeStore();
-  const { userId } = useCurrentUser();
-  const [proofSheetOpen, setProofSheetOpen] = useState(false);
-  const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
+  const { userId, isAnonymous } = useCurrentUser();
+  const [challenges, setChallenges] = useState<ActiveChallenge[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [authVisible, setAuthVisible] = useState(false);
+  const [authReason, setAuthReason] = useState<string | undefined>(undefined);
+
+  const openPartyDiscovery = useCallback(() => {
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: "PartyTab",
+        params: { screen: "PartyDiscovery" },
+      }),
+    );
+  }, [navigation]);
+
+  const openChallenge = useCallback((challengeId: string) => {
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: "PartyTab",
+        params: { screen: "ChallengeDetail", params: { challengeId } },
+      }),
+    );
+  }, [navigation]);
+
+  const loadChallenges = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const nextChallenges = await getPublicActiveChallenges(50);
+      setChallenges(nextChallenges);
+    } catch (caught) {
+      setError(friendlyFeedError(caught));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useFocusEffect(useCallback(() => { void loadChallenges(); }, [loadChallenges]));
 
   const refresh = useCallback(() => {
-    clearError();
     void loadChallenges();
-  }, [clearError, loadChallenges]);
+  }, [loadChallenges]);
 
-  const openProofSheet = (challenge: Challenge) => {
-    if (!userId) {
-      Alert.alert("Sign in required", "Please sign in before submitting proof.");
+  const enterChallenge = useCallback((challengeId: string) => {
+    if (!userId || isAnonymous) {
+      setAuthReason("Sign in to enter challenges and wager plates.");
+      setAuthVisible(true);
       return;
     }
-    setSelectedChallenge(challenge);
-    setProofSheetOpen(true);
-  };
-
-  const submitSelectedProof = async (proofType: "camera" | "photo" | "file" | "text", proofData: string) => {
-    if (!selectedChallenge) return;
-    await submitProof({
-      challengeId: selectedChallenge.id,
-      submitterId: userId ?? "",
-      proofType,
-      proofData,
-    });
-  };
+    openChallenge(challengeId);
+  }, [isAnonymous, openChallenge, userId]);
 
   return (
     <View style={styles.tab}>
@@ -91,7 +100,7 @@ function SteakTab() {
           <Text style={styles.title}>STEAK</Text>
           <Text style={styles.subtitle}>Public challenges with plate rewards.</Text>
         </View>
-        <Button title="Create" size="sm" onPress={() => navigation.navigate("CreateChallenge")} />
+        <Button title="Create" size="sm" onPress={openPartyDiscovery} />
       </View>
 
       {error ? (
@@ -102,61 +111,145 @@ function SteakTab() {
       ) : null}
 
       <FlatList
-        data={sortedChallenges}
+        data={challenges}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ChallengeCard
+          <FeedChallengeCard
             challenge={item}
-            pendingProofs={pendingProofs.get(item.id)}
-            onPress={() => navigation.navigate("ChallengeDetail", { challengeId: item.id })}
-            onSubmitProof={() => openProofSheet(item)}
+            onPress={() => openChallenge(item.id)}
+            onEnter={() => enterChallenge(item.id)}
           />
         )}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor={colors.glaze[600]} />}
-        onEndReachedThreshold={0.35}
-        onEndReached={() => {
-          if (hasMore) void loadMoreChallenges();
-        }}
-        ListFooterComponent={isLoading && sortedChallenges.length > 0 ? <ActivityIndicator color={colors.glaze[600]} /> : null}
+        ListFooterComponent={isLoading && challenges.length > 0 ? <ActivityIndicator color={colors.glaze[600]} /> : null}
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
               icon="🥩"
               title="No open challenges"
-              message="Create a plate-backed challenge and let friends prove they can finish it."
-              actionLabel="Create Challenge"
-              onAction={() => navigation.navigate("CreateChallenge")}
+              message="Open a party to create a challenge with friends."
+              actionLabel="Browse Parties"
+              onAction={openPartyDiscovery}
             />
           ) : <ActivityIndicator color={colors.glaze[600]} />
         }
       />
 
-      <ProofSubmissionSheet
-        visible={proofSheetOpen}
-        onClose={() => setProofSheetOpen(false)}
-        onSubmit={submitSelectedProof}
-        challengeTitle={selectedChallenge?.title ?? ""}
+      <AuthModal
+        visible={authVisible}
+        reason={authReason}
+        onClose={() => setAuthVisible(false)}
+        onSignedIn={() => setAuthVisible(false)}
       />
     </View>
   );
 }
 
+function FeedChallengeCard({
+  challenge,
+  onPress,
+  onEnter,
+}: {
+  challenge: ActiveChallenge;
+  onPress: () => void;
+  onEnter: () => void;
+}) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={styles.feedChallengeCard}>
+        <View style={styles.feedChallengeHeader}>
+          <View style={styles.feedChallengeTitleBlock}>
+            <Text style={styles.feedChallengeTitle} numberOfLines={2}>{challenge.title}</Text>
+            <Text style={styles.feedChallengeCreator}>by {challenge.creatorName}</Text>
+          </View>
+          <Text style={styles.feedChallengeStatus}>{challenge.status}</Text>
+        </View>
+
+        {challenge.description ? (
+          <Text style={styles.feedChallengeDescription} numberOfLines={2}>{challenge.description}</Text>
+        ) : null}
+
+        <View style={styles.feedChallengeStats}>
+          <View style={styles.feedStat}>
+            <Text style={styles.feedStatLabel}>Stake</Text>
+            <Text style={styles.feedStatValue}>{challenge.stakeAmount}</Text>
+          </View>
+          <View style={styles.feedStat}>
+            <Text style={styles.feedStatLabel}>Pot</Text>
+            <Text style={styles.feedStatValue}>{challenge.totalPot}</Text>
+          </View>
+          <View style={styles.feedStat}>
+            <Text style={styles.feedStatLabel}>Entries</Text>
+            <Text style={styles.feedStatValue}>{challenge.entryCount}</Text>
+          </View>
+        </View>
+
+        <View style={styles.feedChallengeFooter}>
+          <Text style={styles.feedDeadline}>{formatChallengeDeadline(challenge.expiresAt)}</Text>
+          <Button title="Enter" size="sm" onPress={onEnter} />
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
+function formatChallengeDeadline(value: ActiveChallenge["expiresAt"]): string {
+  if (!value) return "No deadline";
+  const date = value instanceof Date ? value : new Date(value);
+  const diff = date.getTime() - Date.now();
+  if (Number.isNaN(date.getTime())) return "No deadline";
+  if (diff <= 0) return "Closing soon";
+  const hours = Math.ceil(diff / 3600000);
+  if (hours < 24) return `${hours}h left`;
+  return `${Math.ceil(hours / 24)}d left`;
+}
+
+function friendlyFeedError(error: unknown): string {
+  if (!(error instanceof Error)) return "No connection. Check your internet.";
+  const message = error.message.toLocaleLowerCase();
+  if (message.includes("failed to fetch") || message.includes("network") || message.includes("invalid api key")) {
+    return "No connection. Check your internet.";
+  }
+  return error.message;
+}
+
 function GrowTab() {
   const navigation = useNavigation<FeedNav>();
-  const { userId } = useCurrentUser();
+  const { userId, isAnonymous } = useCurrentUser();
   const { goals, isLoading, error, fetchGoals, completeGoal, failGoal, clearError } = useGoalStore();
+  const [authVisible, setAuthVisible] = useState(false);
+  const [authReason, setAuthReason] = useState<string | undefined>(undefined);
+  const visibleGoals = isAnonymous ? [] : goals;
 
   useFocusEffect(
     useCallback(() => {
+      if (!userId || isAnonymous) {
+        clearError();
+        return;
+      }
       void fetchGoals(userId ?? undefined);
-    }, [fetchGoals, userId]),
+    }, [clearError, fetchGoals, isAnonymous, userId]),
   );
 
   const refresh = useCallback(() => {
+    if (!userId || isAnonymous) return;
     clearError();
     void fetchGoals(userId ?? undefined);
-  }, [clearError, fetchGoals, userId]);
+  }, [clearError, fetchGoals, isAnonymous, userId]);
+
+  const requireRealAccount = useCallback((reason: string, action: () => void) => {
+    if (!userId || isAnonymous) {
+      setAuthReason(reason);
+      setAuthVisible(true);
+      return;
+    }
+    action();
+  }, [isAnonymous, userId]);
+
+  const createGoal = useCallback(() => {
+    requireRealAccount("Sign in to create goals and save streak progress.", () => navigation.navigate("CreateGoal"));
+  }, [navigation, requireRealAccount]);
 
   return (
     <View style={styles.tab}>
@@ -165,7 +258,7 @@ function GrowTab() {
           <Text style={styles.title}>GROW</Text>
           <Text style={styles.subtitle}>Private goals, streaks, and self-stakes.</Text>
         </View>
-        <Button title="New Goal" size="sm" onPress={() => navigation.navigate("CreateGoal")} />
+        <Button title="New Goal" size="sm" onPress={createGoal} />
       </View>
 
       {error ? (
@@ -176,14 +269,14 @@ function GrowTab() {
       ) : null}
 
       <FlatList
-        data={goals}
+        data={visibleGoals}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <GoalCard
             goal={item}
             onPress={() => navigation.navigate("GoalDetail", { goalId: item.id })}
-            onComplete={() => void completeGoal(item.id)}
-            onFail={() => void failGoal(item.id)}
+            onComplete={() => requireRealAccount("Sign in to complete goals and save streak progress.", () => { void completeGoal(item.id); })}
+            onFail={() => requireRealAccount("Sign in to update goals and save streak progress.", () => { void failGoal(item.id); })}
           />
         )}
         contentContainerStyle={styles.list}
@@ -195,10 +288,16 @@ function GrowTab() {
               title="No goals yet"
               message="Create a personal goal, add an optional self-stake, and keep your streak alive."
               actionLabel="Create Goal"
-              onAction={() => navigation.navigate("CreateGoal")}
+              onAction={createGoal}
             />
           ) : <ActivityIndicator color={colors.glaze[600]} />
         }
+      />
+      <AuthModal
+        visible={authVisible}
+        reason={authReason}
+        onClose={() => setAuthVisible(false)}
+        onSignedIn={() => setAuthVisible(false)}
       />
     </View>
   );
@@ -293,7 +392,81 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: typography.sizes.sm,
   },
+  feedChallengeCard: {
+    backgroundColor: colors.ink[800],
+    borderColor: colors.ink[700],
+    borderWidth: 1,
+    gap: spacing[4],
+    marginBottom: spacing[3],
+    marginHorizontal: spacing[4],
+  },
+  feedChallengeHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing[3],
+    justifyContent: "space-between",
+  },
+  feedChallengeTitleBlock: {
+    flex: 1,
+  },
+  feedChallengeTitle: {
+    color: colors.white,
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+  },
+  feedChallengeCreator: {
+    color: colors.ash[400],
+    fontSize: typography.sizes.sm,
+    marginTop: spacing[1],
+  },
+  feedChallengeStatus: {
+    color: colors.glaze[400],
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    textTransform: "uppercase",
+  },
+  feedChallengeDescription: {
+    color: colors.ash[400],
+    fontSize: typography.sizes.sm,
+    lineHeight: 20,
+  },
+  feedChallengeStats: {
+    flexDirection: "row",
+    gap: spacing[2],
+  },
+  feedStat: {
+    backgroundColor: colors.ink[900],
+    borderColor: colors.ink[700],
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    padding: spacing[3],
+  },
+  feedStatLabel: {
+    color: colors.ash[500],
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold,
+    textTransform: "uppercase",
+  },
+  feedStatValue: {
+    color: colors.white,
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+    marginTop: spacing[1],
+  },
+  feedChallengeFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  feedDeadline: {
+    color: colors.ash[400],
+    fontSize: typography.sizes.sm,
+  },
   goalCard: {
+    backgroundColor: colors.ink[800],
+    borderColor: colors.ink[700],
+    borderWidth: 1,
     gap: spacing[3],
     marginBottom: spacing[3],
     marginHorizontal: spacing[4],
@@ -308,23 +481,23 @@ const styles = StyleSheet.create({
     paddingRight: spacing[3],
   },
   goalTitle: {
-    color: colors.ink[900],
+    color: colors.white,
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.bold,
   },
   goalDescription: {
-    color: colors.ash[600],
+    color: colors.ash[400],
     fontSize: typography.sizes.sm,
     marginTop: spacing[1],
   },
   goalStatus: {
-    color: colors.glaze[700],
+    color: colors.glaze[400],
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.bold,
     textTransform: "uppercase",
   },
   progressTrack: {
-    backgroundColor: colors.ash[200],
+    backgroundColor: colors.ink[700],
     borderRadius: 999,
     height: 8,
     overflow: "hidden",
@@ -339,7 +512,7 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   goalMetaText: {
-    color: colors.ash[600],
+    color: colors.ash[400],
     fontSize: typography.sizes.sm,
   },
   goalActions: {

@@ -16,6 +16,7 @@ import { Button } from "../../components/primitives/Button";
 import { Card } from "../../components/primitives/Card";
 import { Input } from "../../components/primitives/Input";
 import { NumericStepper } from "../../components/primitives/NumericStepper";
+import { AuthModal } from "../../components/auth/AuthModal";
 import type { FeedStackParamList } from "../../navigation/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useGoalStore } from "../../stores/useGoalStore";
@@ -25,7 +26,7 @@ type Props = NativeStackScreenProps<FeedStackParamList, "CreateGoal">;
 type PickerMode = "date" | "time";
 
 export function CreateGoalScreen({ navigation }: Props) {
-  const { userId, isAuthenticated } = useCurrentUser();
+  const { userId, isAnonymous } = useCurrentUser();
   const { createGoal, isLoading, error, clearError } = useGoalStore();
 
   const [title, setTitle] = useState("");
@@ -36,6 +37,7 @@ export function CreateGoalScreen({ navigation }: Props) {
   const [deadline, setDeadline] = useState(() => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   const [pickerMode, setPickerMode] = useState<PickerMode>("date");
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [authVisible, setAuthVisible] = useState(false);
 
   const openPicker = (mode: PickerMode) => {
     setPickerMode(mode);
@@ -51,8 +53,8 @@ export function CreateGoalScreen({ navigation }: Props) {
   const handleCreate = async () => {
     clearError();
 
-    if (!isAuthenticated) {
-      Alert.alert("Sign in required", "Please sign in before creating a goal.");
+    if (!userId || isAnonymous) {
+      setAuthVisible(true);
       return;
     }
 
@@ -167,6 +169,12 @@ export function CreateGoalScreen({ navigation }: Props) {
 
         <Button title="Create Goal" size="lg" loading={isLoading} onPress={() => void handleCreate()} />
       </ScrollView>
+      <AuthModal
+        visible={authVisible}
+        reason="Sign in to create goals and save streak progress."
+        onClose={() => setAuthVisible(false)}
+        onSignedIn={() => setAuthVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -199,6 +207,9 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
   },
   card: {
+    backgroundColor: colors.ink[800],
+    borderColor: colors.ink[700],
+    borderWidth: 1,
     gap: spacing[3],
   },
   textArea: {
@@ -215,18 +226,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   label: {
-    color: colors.ink[800],
+    color: colors.white,
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semibold,
   },
   helper: {
-    color: colors.ash[600],
+    color: colors.ash[400],
     fontSize: typography.sizes.xs,
     lineHeight: 16,
     marginTop: spacing[1],
   },
   switch: {
-    backgroundColor: colors.ash[300],
+    backgroundColor: colors.ink[700],
     borderRadius: 999,
     height: 32,
     justifyContent: "center",
@@ -246,7 +257,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   deadline: {
-    color: colors.ink[900],
+    color: colors.white,
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.bold,
   },

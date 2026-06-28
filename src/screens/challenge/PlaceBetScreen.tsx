@@ -14,6 +14,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { getChallenge, placeBet, type ChallengeDetail } from "../../api/challenges";
 import { Button } from "../../components/primitives/Button";
+import { AuthModal } from "../../components/auth/AuthModal";
 import type { PartyStackParamList } from "../../navigation/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { colors, spacing, typography } from "../../theme";
@@ -22,7 +23,7 @@ type Props = NativeStackScreenProps<PartyStackParamList, "PlaceBet">;
 
 export function PlaceBetScreen({ navigation, route }: Props) {
   const { challengeId } = route.params;
-  const { profile, refreshProfile } = useCurrentUser();
+  const { profile, refreshProfile, isAnonymous } = useCurrentUser();
   const [challenge, setChallenge] = useState<ChallengeDetail | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [stakeAmount, setStakeAmount] = useState(1);
@@ -30,6 +31,7 @@ export function PlaceBetScreen({ navigation, route }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authVisible, setAuthVisible] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -64,7 +66,7 @@ export function PlaceBetScreen({ navigation, route }: Props) {
       && selectedOptionId
       && challenge.status === "open"
       && stakeAmount >= minStake
-      && stakeAmount <= balance
+      && (isAnonymous || stakeAmount <= balance)
       && !submitting
       && !success,
   );
@@ -84,6 +86,10 @@ export function PlaceBetScreen({ navigation, route }: Props) {
 
   const confirm = useCallback(async () => {
     if (!challenge || !selectedOptionId) return;
+    if (isAnonymous) {
+      setAuthVisible(true);
+      return;
+    }
     if (challenge.status !== "open") {
       setError("Challenge closed");
       return;
@@ -113,7 +119,7 @@ export function PlaceBetScreen({ navigation, route }: Props) {
     } finally {
       setSubmitting(false);
     }
-  }, [balance, challenge, navigation, refreshProfile, selectedOptionId, stakeAmount]);
+  }, [balance, challenge, isAnonymous, navigation, refreshProfile, selectedOptionId, stakeAmount]);
 
   if (loading) {
     return (
@@ -221,6 +227,12 @@ export function PlaceBetScreen({ navigation, route }: Props) {
           onPress={() => void confirm()}
         />
       </View>
+      <AuthModal
+        visible={authVisible}
+        reason="Sign in to place bets with real plates."
+        onClose={() => setAuthVisible(false)}
+        onSignedIn={() => setAuthVisible(false)}
+      />
     </SafeAreaView>
   );
 }

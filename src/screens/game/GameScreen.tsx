@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -102,13 +102,7 @@ export function GameScreen({ route, navigation }: Props) {
   if (!sessionId) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <EmptyState
-          icon="🎮"
-          title="Wager required"
-          message="Start games from the Play tab so both players confirm an equal plate stake first."
-          actionLabel="Back to Play"
-          onAction={() => navigation.goBack()}
-        />
+        <GuestGame gameId={gameId} onBack={() => navigation.goBack()} />
       </SafeAreaView>
     );
   }
@@ -172,6 +166,74 @@ export function GameScreen({ route, navigation }: Props) {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function GuestGame({ gameId, onBack }: { gameId: GameType; onBack: () => void }) {
+  const [round, setRound] = useState(1);
+  const [score, setScore] = useState(0);
+  const [finished, setFinished] = useState(false);
+  const targetRounds = 5;
+
+  const recordRound = (points: number) => {
+    setScore((value) => value + points);
+    if (round >= targetRounds) {
+      setFinished(true);
+      return;
+    }
+    setRound((value) => value + 1);
+  };
+
+  if (finished) {
+    return (
+      <View style={styles.guestPanel}>
+        <Text style={styles.eyebrow}>GUEST MODE</Text>
+        <Text style={styles.title}>{formatGameType(gameId)} Complete</Text>
+        <Text style={styles.guestScore}>{score}</Text>
+        <Text style={styles.helper}>Sign in from the Play screen to wager plates and save results.</Text>
+        <View style={styles.guestActions}>
+          <Button
+            title="Play Again"
+            onPress={() => {
+              setRound(1);
+              setScore(0);
+              setFinished(false);
+            }}
+          />
+          <Button title="Back to Play" variant="ghost" onPress={onBack} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.guestPanel}>
+      <Text style={styles.eyebrow}>GUEST MODE</Text>
+      <Text style={styles.title}>{formatGameType(gameId)}</Text>
+      <Text style={styles.subtitle}>Round {round}/{targetRounds}. No plates are wagered.</Text>
+      <Card style={styles.gamePanel}>
+        <Text style={styles.panelTitle}>{guestPrompt(gameId, round)}</Text>
+        <View style={styles.choiceRow}>
+          <Pressable accessibilityRole="button" onPress={() => recordRound(10)} style={styles.choiceButton}>
+            <Text style={styles.choiceText}>Nailed it</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => recordRound(0)} style={styles.choiceButton}>
+            <Text style={styles.choiceText}>Missed it</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.helper}>Guest score: {score}</Text>
+      </Card>
+      <Button title="Back to Play" variant="ghost" onPress={onBack} />
+    </View>
+  );
+}
+
+function guestPrompt(gameId: GameType, round: number): string {
+  if (gameId === "quick-math") return `${round + 3} + ${round * 2} = ?`;
+  if (gameId === "word-guess") return "Guess the hidden Plate Party word.";
+  if (gameId === "memory") return "Find the matching pair.";
+  if (gameId === "rps") return "Pick the winning throw.";
+  if (gameId === "tic-tac-toe") return "Find the best next move.";
+  return QUESTIONS[(round - 1) % QUESTIONS.length]?.prompt ?? "Answer the challenge.";
 }
 
 function RpsGame({
@@ -426,7 +488,6 @@ function QuestionsGame({
   const answers = getMoves(session, "trivia-answer");
   const question = QUESTIONS[answers.length];
   const score = answers.filter((move) => move.correct === true).length;
-  const completed = !question;
 
   return (
     <Card style={styles.gamePanel}>
@@ -581,6 +642,21 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.wine[300],
     fontSize: typography.sizes.sm,
+  },
+  guestPanel: {
+    flex: 1,
+    gap: spacing[4],
+    justifyContent: "center",
+    padding: spacing[5],
+  },
+  guestScore: {
+    color: colors.gold,
+    fontSize: typography.sizes["5xl"],
+    fontWeight: typography.weights.bold,
+    textAlign: "center",
+  },
+  guestActions: {
+    gap: spacing[3],
   },
   gamePanel: {
     gap: spacing[3],

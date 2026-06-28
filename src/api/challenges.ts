@@ -224,6 +224,24 @@ export async function getActiveChallenges(partyId: string): Promise<ActiveChalle
   return getActiveChallengesFallback(id);
 }
 
+export async function getPublicActiveChallenges(limit = 50): Promise<ActiveChallenge[]> {
+  await getRequiredSession();
+  const parsedLimit = z.number().int().min(1).max(100).parse(limit);
+  const { data, error } = await supabase
+    .from("challenges")
+    .select("*")
+    .eq("status", "open")
+    .eq("type", "public")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(parsedLimit);
+
+  if (error) throw error;
+
+  const challenges = z.array(z.record(z.string(), z.unknown())).parse(data ?? []).map(normalizeChallenge);
+  return hydrateActiveChallenges(challenges);
+}
+
 export async function getChallengeResults(challengeId: string): Promise<ChallengeResults> {
   await getRequiredSession();
   const id = UUIDSchema.parse(challengeId);
@@ -306,6 +324,10 @@ async function getActiveChallengesFallback(partyId: string): Promise<ActiveChall
   if (error) throw error;
 
   const challenges = z.array(z.record(z.string(), z.unknown())).parse(data ?? []).map(normalizeChallenge);
+  return hydrateActiveChallenges(challenges);
+}
+
+async function hydrateActiveChallenges(challenges: Challenge[]): Promise<ActiveChallenge[]> {
   if (!challenges.length) return [];
 
   const challengeIds = challenges.map((challenge) => challenge.id);

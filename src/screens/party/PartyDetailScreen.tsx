@@ -17,6 +17,7 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { colors, spacing, typography } from "../../theme";
 import type { PartyStackParamList } from "../../navigation/types";
 import { ErrorBoundary } from "../../components/common/ErrorBoundary";
+import { AuthModal } from "../../components/auth/AuthModal";
 import { ReportModal } from "../../components/composite/ReportModal";
 import type { ReportReason } from "../../components/composite/ReportModal";
 import { supabase } from "../../lib/supabase";
@@ -38,8 +39,9 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
     leaveParty,
     deleteParty,
   } = usePartyStore();
-  const { userId } = useCurrentUser();
+  const { userId, isAnonymous } = useCurrentUser();
   const [reportVisible, setReportVisible] = useState(false);
+  const [authVisible, setAuthVisible] = useState(false);
   const [activeChallenges, setActiveChallenges] = useState<ActiveChallenge[]>([]);
   const [challengesLoading, setChallengesLoading] = useState(true);
   const [challengeError, setChallengeError] = useState<string | null>(null);
@@ -139,6 +141,14 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
     Alert.alert("Reported", "Thank you. We will review this report.");
   }, [partyId]);
 
+  const handleCreateChallenge = useCallback(() => {
+    if (!userId || isAnonymous) {
+      setAuthVisible(true);
+      return;
+    }
+    navigation.navigate("CreateChallenge", { partyId });
+  }, [isAnonymous, navigation, partyId, userId]);
+
   if (partyLoading && !currentParty) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -222,7 +232,7 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
                 <Pressable
                   accessibilityLabel="Create challenge"
                   accessibilityRole="button"
-                  onPress={() => navigation.navigate("CreateChallenge", { partyId })}
+                  onPress={handleCreateChallenge}
                 >
                   <Text style={styles.createOneText}>Create One</Text>
                 </Pressable>
@@ -269,7 +279,7 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
 
           <View style={styles.actions}>
             <Pressable
-              onPress={() => navigation.navigate("CreateChallenge", { partyId })}
+              onPress={handleCreateChallenge}
               style={styles.actionBtn}
             >
               <Text style={styles.actionBtnText}>Create Challenge</Text>
@@ -303,11 +313,17 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
         <Pressable
           accessibilityLabel="Create challenge"
           accessibilityRole="button"
-          onPress={() => navigation.navigate("CreateChallenge", { partyId })}
+          onPress={handleCreateChallenge}
           style={styles.fab}
         >
           <Text style={styles.fabText}>+</Text>
         </Pressable>
+        <AuthModal
+          visible={authVisible}
+          reason="Sign in to create a challenge and wager real plates."
+          onClose={() => setAuthVisible(false)}
+          onSignedIn={() => setAuthVisible(false)}
+        />
       </SafeAreaView>
     </ErrorBoundary>
   );

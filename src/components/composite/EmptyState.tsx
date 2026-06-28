@@ -44,14 +44,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing[4],
   },
   title: {
-    color: colors.ink[900],
+    color: colors.white,
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.bold,
     marginBottom: spacing[2],
     textAlign: "center",
   },
   message: {
-    color: colors.ash[600],
+    color: colors.ash[400],
     fontSize: typography.sizes.base,
     marginBottom: spacing[5],
     textAlign: "center",

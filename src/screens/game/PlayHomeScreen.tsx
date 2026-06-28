@@ -20,6 +20,7 @@ import { Button } from "../../components/primitives/Button";
 import { Card } from "../../components/primitives/Card";
 import { Input } from "../../components/primitives/Input";
 import { NumericStepper } from "../../components/primitives/NumericStepper";
+import { AuthModal } from "../../components/auth/AuthModal";
 import type { PlayStackParamList } from "../../navigation/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useGameStore } from "../../stores/useGameStore";
@@ -83,7 +84,7 @@ const GAMES: GameCard[] = [
 ];
 
 export function PlayHomeScreen({ navigation }: Props) {
-  const { userId } = useCurrentUser();
+  const { userId, isAnonymous } = useCurrentUser();
   const { sessions, isLoading, error, createSession, fetchSessions, clearError } = useGameStore();
   const { getRandomOpponent, onlineCount, status } = useOnlineStore();
 
@@ -93,20 +94,26 @@ export function PlayHomeScreen({ navigation }: Props) {
   const [wagerAmount, setWagerAmount] = useState(5);
   const [confirmed, setConfirmed] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [authVisible, setAuthVisible] = useState(false);
 
   useEffect(() => {
+    if (!userId || isAnonymous) {
+      clearError();
+      return;
+    }
     void fetchSessions(userId ?? undefined);
-  }, [fetchSessions, userId]);
+  }, [clearError, fetchSessions, isAnonymous, userId]);
 
   const completedSessions = useMemo(
-    () => sessions.filter((session) => session.status === "completed" || Boolean(session.completedAt)),
-    [sessions],
+    () => isAnonymous ? [] : sessions.filter((session) => session.status === "completed" || Boolean(session.completedAt)),
+    [isAnonymous, sessions],
   );
 
   const refresh = useCallback(() => {
     clearError();
+    if (!userId || isAnonymous) return;
     void fetchSessions(userId ?? undefined);
-  }, [clearError, fetchSessions, userId]);
+  }, [clearError, fetchSessions, isAnonymous, userId]);
 
   const closeSheet = () => {
     setSelectedGame(null);
@@ -117,8 +124,8 @@ export function PlayHomeScreen({ navigation }: Props) {
 
   const startGame = async () => {
     if (!selectedGame) return;
-    if (!userId) {
-      Alert.alert("Sign in required", "Please sign in before wagering plates.");
+    if (!userId || isAnonymous) {
+      setAuthVisible(true);
       return;
     }
     if (!confirmed) {
@@ -143,6 +150,13 @@ export function PlayHomeScreen({ navigation }: Props) {
     }
   };
 
+  const playForFun = () => {
+    if (!selectedGame) return;
+    const gameId = selectedGame.id;
+    closeSheet();
+    navigation.navigate("GameScreen", { gameId });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
@@ -154,7 +168,7 @@ export function PlayHomeScreen({ navigation }: Props) {
         <OnlineUsersHeader />
       </View>
 
-      {error ? (
+      {error && !isAnonymous ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
           <Button title="Retry" size="sm" variant="secondary" onPress={refresh} />
@@ -242,11 +256,18 @@ export function PlayHomeScreen({ navigation }: Props) {
 
             <View style={styles.sheetActions}>
               <Button title="Start Match" loading={starting} onPress={() => void startGame()} />
+              <Button title="Play for Fun" variant="secondary" onPress={playForFun} />
               <Button title="Cancel" variant="ghost" onPress={closeSheet} />
             </View>
           </View>
         </View>
       </Modal>
+      <AuthModal
+        visible={authVisible}
+        reason="Sign in to wager plates. You can still play for fun as a guest."
+        onClose={() => setAuthVisible(false)}
+        onSignedIn={() => setAuthVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -392,7 +413,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
   },
   overlay: {
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: colors.ink[950],
     flex: 1,
     justifyContent: "flex-end",
   },

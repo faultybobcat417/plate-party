@@ -12,7 +12,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { z } from "zod";
 
-import { useAuth } from "../../context/AuthContext";
+import { AuthModal } from "../../components/auth/AuthModal";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { getPartyByInviteCode, joinPartyByInviteCode } from "../../api/party";
 import { usePartyStore } from "../../stores/usePartyStore";
 import { colors, spacing, typography } from "../../theme";
@@ -27,12 +28,13 @@ export type JoinPartyScreenProps = NativeStackScreenProps<
 const InviteCodeSchema = z.string().trim().regex(/^[A-Z0-9]{6}$/, "Invalid code format.");
 
 export function JoinPartyScreen({ navigation, route }: JoinPartyScreenProps) {
-  const { user } = useAuth();
+  const { userId, isAnonymous } = useCurrentUser();
   const { parties } = usePartyStore();
   const [code, setCode] = useState((route.params?.inviteCode ?? "").toUpperCase());
   const [loading, setLoading] = useState(false);
   const [party, setParty] = useState<Awaited<ReturnType<typeof getPartyByInviteCode>>>(null);
   const [error, setError] = useState<string | null>(null);
+  const [authVisible, setAuthVisible] = useState(false);
 
   const lookupParty = useCallback(async () => {
     if (!code.trim()) return;
@@ -55,8 +57,8 @@ export function JoinPartyScreen({ navigation, route }: JoinPartyScreenProps) {
   }, [code]);
 
   const handleJoin = useCallback(async () => {
-    if (!user?.id) {
-      Alert.alert("Error", "Please sign in first.");
+    if (!userId || isAnonymous) {
+      setAuthVisible(true);
       return;
     }
     if (!party) return;
@@ -83,7 +85,7 @@ export function JoinPartyScreen({ navigation, route }: JoinPartyScreenProps) {
     } finally {
       setLoading(false);
     }
-  }, [user, party, code, parties, navigation]);
+  }, [userId, isAnonymous, party, code, parties, navigation]);
 
   return (
     <ErrorBoundary>
@@ -127,6 +129,12 @@ export function JoinPartyScreen({ navigation, route }: JoinPartyScreenProps) {
             </Pressable>
           </View>
         )}
+        <AuthModal
+          visible={authVisible}
+          reason="Sign in to join this party and save your membership."
+          onClose={() => setAuthVisible(false)}
+          onSignedIn={() => setAuthVisible(false)}
+        />
       </SafeAreaView>
     </ErrorBoundary>
   );
