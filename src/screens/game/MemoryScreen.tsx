@@ -15,6 +15,7 @@ import { typography } from "../../theme/typography";
 import { useGameStore } from "../../stores/useGameStore";
 import { calculatePlates } from "../../api/game";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { shuffle } from "../../lib/random";
 
 const EMOJIS = ["🍕", "🚀", "🐱", "🌵", "🎸", "💎", "🍦", "🎈"];
 
@@ -24,10 +25,6 @@ type Card = {
   flipped: boolean;
   matched: boolean;
 };
-
-function shuffle<T>(arr: T[]): T[] {
-  return [...arr].sort(() => Math.random() - 0.5);
-}
 
 export function MemoryScreen() {
   const { userId: currentUserId } = useCurrentUser();

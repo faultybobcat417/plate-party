@@ -7,6 +7,7 @@ import {
   listAllLedgerEntries,
   listLedgerEntriesForParty,
   type AccountBalance,
+  type LedgerTransaction,
 } from "../api/ledger";
 import { LedgerEntry } from "../db/schema";
 
@@ -34,7 +35,7 @@ export const useLedgerStore = create<LedgerState>()(
         set({ isLoading: true, error: null });
         try {
           const entries = await listLedgerEntriesForParty(partyId, limit);
-          set({ entries: entries as any, isLoading: false });
+          set({ entries: entries.map(toLedgerEntry), isLoading: false });
         } catch (error) {
           set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
@@ -54,7 +55,7 @@ export const useLedgerStore = create<LedgerState>()(
         set({ isLoading: true, error: null });
         try {
           const entries = await listAllLedgerEntries(limit);
-          set({ entries: entries as any, isLoading: false });
+          set({ entries: entries.map(toLedgerEntry), isLoading: false });
         } catch (error) {
           set({ error: error instanceof Error ? error.message : "Unknown error", isLoading: false });
         }
@@ -68,3 +69,25 @@ export const useLedgerStore = create<LedgerState>()(
     }
   )
 );
+
+function toLedgerEntry(transaction: LedgerTransaction): LedgerEntry {
+  return {
+    id: transaction.id,
+    userId: transaction.userId ?? "",
+    amount: transaction.amount ?? 0,
+    balanceAfter: transaction.balanceAfter ?? 0,
+    type: transaction.type ?? "spend",
+    referenceId: transaction.referenceId ?? transaction.reference ?? null,
+    referenceType: transaction.referenceType ?? null,
+    metadata: transaction.metadata ?? {},
+    createdAt:
+      transaction.createdAt instanceof Date
+        ? transaction.createdAt.toISOString()
+        : transaction.createdAt,
+    sourceTable: transaction.sourceTable ?? "ledger_entries",
+    accountType: transaction.entries?.[0]?.accountType ?? "user",
+    accountId: transaction.entries?.[0]?.accountId ?? transaction.userId ?? "",
+    memo: transaction.description ?? transaction.entries?.[0]?.memo,
+    plateDelta: transaction.amount ?? 0,
+  };
+}

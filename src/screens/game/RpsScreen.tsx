@@ -15,6 +15,7 @@ import { typography } from "../../theme/typography";
 import { useGameStore } from "../../stores/useGameStore";
 import { calculatePlates } from "../../api/game";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { pickRandom } from "../../lib/random";
 
 type Move = "rock" | "paper" | "scissors";
 
@@ -38,7 +39,7 @@ function getWinner(a: Move, b: Move): "win" | "lose" | "draw" {
 
 function randomMove(): Move {
   const moves: Move[] = ["rock", "paper", "scissors"];
-  return moves[Math.floor(Math.random() * moves.length)];
+  return pickRandom(moves);
 }
 
 export function RpsScreen() {

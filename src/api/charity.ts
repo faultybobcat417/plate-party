@@ -1,6 +1,18 @@
 import { supabase } from "../lib/supabase";
 import { Donation } from "../db/schema";
 import type { CharityCategory, CharityOrg } from "../types/charity";
+import { PlateAmountSchema, UUIDSchema } from "../lib/validation";
+import {
+  assertOwnUser,
+  getRequiredSession,
+  isRecord,
+  readDateValue,
+  readNullableString,
+  readNumber,
+  readString,
+} from "./_shared";
+import { donatePlates as donatePlateBalance } from "./plates";
+import { z } from "zod";
 
 export interface Charity {
   id: string;
@@ -76,21 +88,86 @@ export const MOCK_CHARITIES: Charity[] = [
   { id: "4", name: "Doctors Without Borders", description: "Medical humanitarian aid", ein: "13-1754319", logoUrl: "", category: "Health" },
 ];
 
+const DonationInputSchema = z.object({
+  userId: UUIDSchema,
+  charity: z.object({
+    id: z.string().min(1),
+    name: z.string().trim().min(1).max(120),
+    description: z.string(),
+    ein: z.string().trim().max(20),
+    logoUrl: z.string(),
+    category: z.string(),
+  }),
+  platesAmount: PlateAmountSchema,
+});
+
+const DonationRowsSchema = z.array(z.record(z.string(), z.unknown()));
+
 export async function donatePlates(userId: string, charity: Charity, platesAmount: number): Promise<Donation> {
-  const { data, error } = await supabase.from("donations").insert({
-    user_id: userId,
-    charity_name: charity.name,
-    charity_ein: charity.ein,
-    plates_amount: platesAmount,
-    usd_value: platesAmount,
+  const parsed = DonationInputSchema.parse({ userId, charity, platesAmount });
+  const session = await getRequiredSession();
+  const scopedUserId = assertOwnUser(session, parsed.userId);
+  const result = await donatePlateBalance({
+    amount: parsed.platesAmount,
+    charityName: parsed.charity.name,
+    charityUrl: parsed.charity.logoUrl || null,
+  });
+
+  const donationId = result.donationId;
+  if (donationId) {
+    const { data, error } = await supabase
+      .from("donations")
+      .select("*")
+      .eq("id", donationId)
+      .eq("user_id", scopedUserId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data && isRecord(data)) return normalizeDonation(data);
+  }
+
+  const donations = await getUserDonations(scopedUserId);
+  return donations.find((donation) => donation.charityName === parsed.charity.name) ?? {
+    id: donationId ?? "",
+    userId: scopedUserId,
+    charityName: parsed.charity.name,
+    charityEin: parsed.charity.ein,
+    platesAmount: parsed.platesAmount,
+    usdValue: parsed.platesAmount,
     status: "pending",
-  }).select().single();
-  if (error) throw error;
-  return data as Donation;
+    receiptUrl: null,
+    createdAt: new Date(),
+  };
 }
 
 export async function getUserDonations(userId: string): Promise<Donation[]> {
-  const { data, error } = await supabase.from("donations").select("*").eq("user_id", userId).order("created_at", { ascending: false });
-  if (error) return [];
-  return (data || []) as Donation[];
+  const session = await getRequiredSession();
+  const scopedUserId = assertOwnUser(session, UUIDSchema.parse(userId));
+  const { data, error } = await supabase
+    .from("donations")
+    .select("*")
+    .eq("user_id", scopedUserId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return DonationRowsSchema.parse(data ?? []).map(normalizeDonation);
+}
+
+function normalizeDonation(row: Record<string, unknown>): Donation {
+  return {
+    id: readString(row, "id") ?? "",
+    userId: readString(row, "userId", "user_id") ?? "",
+    charityName: readString(row, "charityName", "charity_name") ?? "",
+    charityEin: readNullableString(row, "charityEin", "charity_ein"),
+    platesAmount: readNumber(row, "platesAmount", "plates_amount") ?? 0,
+    usdValue: readNumber(row, "usdValue", "usd_value") ?? 0,
+    status: readString(row, "status") ?? "pending",
+    receiptUrl: readNullableString(row, "receiptUrl", "receipt_url"),
+    createdAt: toDate(readDateValue(row, "createdAt", "created_at")),
+  };
+}
+
+function toDate(value: string | Date | null): Date {
+  if (value instanceof Date) return value;
+  return value ? new Date(value) : new Date();
 }

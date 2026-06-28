@@ -11,6 +11,7 @@ import { RootNavigator } from "./src/navigation/RootNavigator";
 import { AuthProvider } from "./src/context/AuthContext";
 import { queryClient } from "./src/lib/queryClient";
 import { useDeepLink } from "./src/hooks/useDeepLink";
+import { OfflineSyncIndicator } from "./src/components/composite/OfflineSyncIndicator";
 
 function DeepLinkHandler() {
   useDeepLink();
@@ -27,6 +28,7 @@ export default function App() {
               <NavigationContainer>
                 <DeepLinkHandler />
                 <RootNavigator />
+                <OfflineSyncIndicator />
                 <StatusBar style="auto" />
               </NavigationContainer>
             </ThemeProvider>

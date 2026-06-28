@@ -1,53 +1,257 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
-import { useAuth } from "../../context/AuthContext";
-import { createGoal } from "../../api/goal";
-import { useNavigation } from "@react-navigation/native";
+import { useState } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-export function CreateGoalScreen() {
-  const { user } = useAuth();
-  const navigation = useNavigation();
+import { Button } from "../../components/primitives/Button";
+import { Card } from "../../components/primitives/Card";
+import { Input } from "../../components/primitives/Input";
+import { NumericStepper } from "../../components/primitives/NumericStepper";
+import type { FeedStackParamList } from "../../navigation/types";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useGoalStore } from "../../stores/useGoalStore";
+import { colors, spacing, typography } from "../../theme";
+
+type Props = NativeStackScreenProps<FeedStackParamList, "CreateGoal">;
+type PickerMode = "date" | "time";
+
+export function CreateGoalScreen({ navigation }: Props) {
+  const { userId, isAuthenticated } = useCurrentUser();
+  const { createGoal, isLoading, error, clearError } = useGoalStore();
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [stake, setStake] = useState("5");
-  const [loading, setLoading] = useState(false);
+  const [selfStakeEnabled, setSelfStakeEnabled] = useState(false);
+  const [stakeAmount, setStakeAmount] = useState(5);
+  const [deadlineEnabled, setDeadlineEnabled] = useState(false);
+  const [deadline, setDeadline] = useState(() => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  const [pickerMode, setPickerMode] = useState<PickerMode>("date");
+  const [pickerVisible, setPickerVisible] = useState(false);
+
+  const openPicker = (mode: PickerMode) => {
+    setPickerMode(mode);
+    setPickerVisible(true);
+  };
+
+  const handleDeadlineChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS !== "ios") setPickerVisible(false);
+    if (!selectedDate) return;
+    setDeadline(selectedDate);
+  };
 
   const handleCreate = async () => {
-    if (!user?.id) { Alert.alert("Error", "Please sign in first."); return; }
-    if (!title.trim()) { Alert.alert("Error", "Title is required."); return; }
-    setLoading(true);
+    clearError();
+
+    if (!isAuthenticated) {
+      Alert.alert("Sign in required", "Please sign in before creating a goal.");
+      return;
+    }
+
+    if (!title.trim()) {
+      Alert.alert("Missing title", "Give your goal a clear title.");
+      return;
+    }
+
+    if (deadlineEnabled && deadline.getTime() <= Date.now()) {
+      Alert.alert("Invalid deadline", "Choose a deadline in the future.");
+      return;
+    }
+
     try {
-      await createGoal(user.id, title.trim(), description.trim() || null, parseInt(stake) || 5);
-      Alert.alert("Success", "Goal created!");
+      await createGoal({
+        userId: userId ?? undefined,
+        title: title.trim(),
+        description: description.trim() || null,
+        stakeAmount: selfStakeEnabled ? stakeAmount : 0,
+        deadline: deadlineEnabled ? deadline : null,
+      });
       navigation.goBack();
-    } catch (error: any) { Alert.alert("Error", error.message || "Failed to create goal."); }
-    finally { setLoading(false); }
+    } catch (caught) {
+      Alert.alert("Goal not created", caught instanceof Error ? caught.message : error ?? "Please try again.");
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create Personal Goal</Text>
-      <Text style={styles.label}>Title</Text>
-      <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="What is your goal?" placeholderTextColor="#666" />
-      <Text style={styles.label}>Description</Text>
-      <TextInput style={[styles.input, { height: 80 }]} value={description} onChangeText={setDescription} placeholder="Details, deadline, proof requirements..." placeholderTextColor="#666" multiline />
-      <Text style={styles.label}>Stake (Plates)</Text>
-      <TextInput style={styles.input} value={stake} onChangeText={setStake} keyboardType="numeric" placeholderTextColor="#666" />
-      <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleCreate} disabled={loading}>
-        {loading ? <ActivityIndicator color="#0a0a0a" /> : <Text style={styles.buttonText}>Create Goal</Text>}
-      </TouchableOpacity>
-    </View>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.eyebrow}>GROW</Text>
+            <Text style={styles.title}>Create Goal</Text>
+          </View>
+          <Button title="Cancel" size="sm" variant="ghost" onPress={() => navigation.goBack()} />
+        </View>
+
+        <Card style={styles.card}>
+          <Input
+            label="Title"
+            placeholder="Meditate every morning"
+            value={title}
+            onChangeText={setTitle}
+            maxLength={120}
+          />
+          <Input
+            label="Description"
+            placeholder="What does success look like?"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={4}
+            style={styles.textArea}
+          />
+        </Card>
+
+        <Card style={styles.card}>
+          <View style={styles.rowBetween}>
+            <View style={styles.flex}>
+              <Text style={styles.label}>Self-Stake</Text>
+              <Text style={styles.helper}>Optional plates reserved to keep you accountable.</Text>
+            </View>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: selfStakeEnabled }}
+              onPress={() => setSelfStakeEnabled((value) => !value)}
+              style={[styles.switch, selfStakeEnabled && styles.switchOn]}
+            >
+              <View style={[styles.knob, selfStakeEnabled && styles.knobOn]} />
+            </Pressable>
+          </View>
+          {selfStakeEnabled ? (
+            <NumericStepper value={stakeAmount} onChange={setStakeAmount} min={1} max={1000} step={1} />
+          ) : null}
+        </Card>
+
+        <Card style={styles.card}>
+          <View style={styles.rowBetween}>
+            <View style={styles.flex}>
+              <Text style={styles.label}>Deadline</Text>
+              <Text style={styles.helper}>Optional target date for this goal.</Text>
+            </View>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: deadlineEnabled }}
+              onPress={() => setDeadlineEnabled((value) => !value)}
+              style={[styles.switch, deadlineEnabled && styles.switchOn]}
+            >
+              <View style={[styles.knob, deadlineEnabled && styles.knobOn]} />
+            </Pressable>
+          </View>
+          {deadlineEnabled ? (
+            <>
+              <Text style={styles.deadline}>{deadline.toLocaleString()}</Text>
+              <View style={styles.pickerActions}>
+                <Button title="Pick Date" size="sm" variant="secondary" onPress={() => openPicker("date")} />
+                <Button title="Pick Time" size="sm" variant="secondary" onPress={() => openPicker("time")} />
+              </View>
+              {pickerVisible ? (
+                <DateTimePicker
+                  value={deadline}
+                  mode={pickerMode}
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  minimumDate={new Date()}
+                  onChange={handleDeadlineChange}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </Card>
+
+        <Button title="Create Goal" size="lg" loading={isLoading} onPress={() => void handleCreate()} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 export default CreateGoalScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0a0a0a", padding: 24 },
-  title: { fontSize: 24, fontWeight: "bold", color: "#FFD700", marginBottom: 24 },
-  label: { fontSize: 14, color: "#888", marginBottom: 8 },
-  input: { backgroundColor: "#1a1a1a", borderWidth: 1, borderColor: "#333", borderRadius: 12, padding: 16, color: "#fff", fontSize: 16, marginBottom: 16 },
-  button: { backgroundColor: "#FFD700", paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 16 },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: "#0a0a0a", fontSize: 16, fontWeight: "bold" },
+  container: {
+    backgroundColor: colors.black,
+    flex: 1,
+  },
+  scroll: {
+    gap: spacing[4],
+    padding: spacing[4],
+    paddingBottom: spacing[8],
+  },
+  header: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  eyebrow: {
+    color: colors.glaze[300],
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+  },
+  title: {
+    color: colors.white,
+    fontSize: typography.sizes["2xl"],
+    fontWeight: typography.weights.bold,
+  },
+  card: {
+    gap: spacing[3],
+  },
+  textArea: {
+    minHeight: 104,
+    textAlignVertical: "top",
+  },
+  rowBetween: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing[3],
+    justifyContent: "space-between",
+  },
+  flex: {
+    flex: 1,
+  },
+  label: {
+    color: colors.ink[800],
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
+  },
+  helper: {
+    color: colors.ash[600],
+    fontSize: typography.sizes.xs,
+    lineHeight: 16,
+    marginTop: spacing[1],
+  },
+  switch: {
+    backgroundColor: colors.ash[300],
+    borderRadius: 999,
+    height: 32,
+    justifyContent: "center",
+    paddingHorizontal: 3,
+    width: 56,
+  },
+  switchOn: {
+    backgroundColor: colors.glaze[600],
+  },
+  knob: {
+    backgroundColor: colors.white,
+    borderRadius: 999,
+    height: 26,
+    width: 26,
+  },
+  knobOn: {
+    alignSelf: "flex-end",
+  },
+  deadline: {
+    color: colors.ink[900],
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+  },
+  pickerActions: {
+    flexDirection: "row",
+    gap: spacing[2],
+  },
 });

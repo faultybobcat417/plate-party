@@ -1,204 +1,323 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  getChallengeById,
+  getChallengeEntries,
+  resolveChallenge,
+  type Challenge,
+  type ChallengeEntry,
+} from "../../api/challenge";
 import { Badge } from "../../components/primitives/Badge";
 import { Button } from "../../components/primitives/Button";
 import { Card } from "../../components/primitives/Card";
 import { EmptyState } from "../../components/composite/EmptyState";
+import { ProofSubmissionSheet } from "../../components/composite/ProofSubmissionSheet";
+import { SubmissionCard } from "../../components/composite/SubmissionCard";
 import type { FeedStackParamList } from "../../navigation/types";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useChallengeStore } from "../../stores/useChallengeStore";
 import { colors, spacing, typography } from "../../theme";
 
 type Props = NativeStackScreenProps<FeedStackParamList, "ChallengeDetail">;
 
-const typeLabel = (type: string): string => {
-  switch (type) {
-    case "self":
-      return "Self Challenge";
-    case "bounty":
-      return "Bounty";
-    case "group":
-      return "Group Challenge";
-    default:
-      return "Challenge";
-  }
-};
-
-const statusLabel = (status: string): string => {
-  switch (status) {
-    case "open":
-      return "Open";
-    case "claimed":
-      return "Claimed";
-    case "completed":
-      return "Completed";
-    case "expired":
-      return "Expired";
-    default:
-      return status;
-  }
-};
-
 export function ChallengeDetailScreen({ route, navigation }: Props) {
   const { challengeId } = route.params;
-  const challenges = useChallengeStore((state) => state.challenges);
-  const [challenge, setChallenge] = useState<(typeof challenges)[0] | null>(null);
+  const cachedChallenge = useChallengeStore((state) =>
+    state.challenges.find((challenge) => challenge.id === challengeId),
+  );
+  const submitProof = useChallengeStore((state) => state.submitProof);
+  const { userId, isAuthenticated } = useCurrentUser();
+
+  const [challenge, setChallenge] = useState<Challenge | null>(cachedChallenge ?? null);
+  const [entries, setEntries] = useState<ChallengeEntry[]>([]);
+  const [loading, setLoading] = useState(!cachedChallenge);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [proofSheetOpen, setProofSheetOpen] = useState(false);
+  const [resolvingEntryId, setResolvingEntryId] = useState<string | null>(null);
+
+  const isCreator = Boolean(userId && challenge?.creatorId === userId);
+  const submittedEntries = useMemo(
+    () => entries.filter((entry) => Boolean(entry.proofUrl || entry.proofSubmittedAt)),
+    [entries],
+  );
+
+  const loadDetail = useCallback(async () => {
+    setError(null);
+    const [freshChallenge, freshEntries] = await Promise.all([
+      getChallengeById(challengeId),
+      getChallengeEntries(challengeId),
+    ]);
+    setChallenge(freshChallenge);
+    setEntries(freshEntries);
+  }, [challengeId]);
 
   useEffect(() => {
-    const found = challenges.find((c) => c.id === challengeId);
-    if (found) {
-      setChallenge(found);
+    let alive = true;
+    setLoading(true);
+    loadDetail()
+      .catch((caught) => {
+        if (alive) setError(caught instanceof Error ? caught.message : "Failed to load challenge.");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [loadDetail]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadDetail();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to refresh challenge.");
+    } finally {
+      setRefreshing(false);
     }
-  }, [challenges, challengeId]);
+  };
+
+  const openProofSheet = () => {
+    if (!isAuthenticated) {
+      Alert.alert("Sign in required", "Please sign in before submitting proof.");
+      return;
+    }
+    setProofSheetOpen(true);
+  };
+
+  const submitSelectedProof = async (proofType: "camera" | "photo" | "file" | "text", proofData: string) => {
+    if (!challenge || !userId) return;
+    await submitProof({
+      challengeId: challenge.id,
+      submitterId: userId,
+      proofType,
+      proofData,
+    });
+    await refresh();
+  };
+
+  const pickWinner = async (entry: ChallengeEntry) => {
+    setResolvingEntryId(entry.id);
+    try {
+      await resolveChallenge({ challengeId, winnerEntryId: entry.id });
+      Alert.alert("Winner picked", "The plate reward has been resolved.");
+      await refresh();
+    } catch (caught) {
+      Alert.alert("Could not pick winner", caught instanceof Error ? caught.message : "Please try again.");
+    } finally {
+      setResolvingEntryId(null);
+    }
+  };
+
+  if (loading && !challenge) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <ActivityIndicator color={colors.glaze[500]} style={styles.loader} />
+      </SafeAreaView>
+    );
+  }
 
   if (!challenge) {
     return (
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <EmptyState
           icon="🔍"
           title="Challenge not found"
-          message="This challenge may have been deleted."
+          message={error ?? "This challenge may have been deleted."}
+          actionLabel="Back"
+          onAction={() => navigation.goBack()}
         />
       </SafeAreaView>
     );
   }
 
-  const isOpen = challenge.status === "open";
-  const isClaimed = challenge.status === "claimed";
-  const isCompleted = challenge.status === "completed";
-
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.glaze[500]} />}
+      >
         <View style={styles.header}>
-          <Badge label={typeLabel(challenge.type)} variant="info" />
-          <Badge label={statusLabel(challenge.status)} variant={isCompleted ? "success" : isClaimed ? "warning" : "default"} />
+          <Button title="Back" size="sm" variant="ghost" onPress={() => navigation.goBack()} />
+          <View style={styles.badges}>
+            <Badge label={challenge.type} variant="info" />
+            <Badge label={challenge.status} variant={challenge.status === "completed" ? "success" : "warning"} />
+          </View>
         </View>
 
         <Text style={styles.title}>{challenge.title}</Text>
-        
-        {challenge.description ? (
-          <Text style={styles.description}>{challenge.description}</Text>
-        ) : null}
+        {challenge.description ? <Text style={styles.description}>{challenge.description}</Text> : null}
 
-        <Card variant="elevated" padding={5} style={styles.rewardCard}>
-          <Text style={styles.rewardLabel}>Reward</Text>
-          <Text style={styles.rewardAmount}>🍽 {challenge.rewardPlates} plates</Text>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        <Card style={styles.rewardCard}>
+          <View>
+            <Text style={styles.cardLabel}>Reward</Text>
+            <Text style={styles.rewardText}>{challenge.rewardPlates ?? challenge.rewardAmount ?? 0} plates</Text>
+          </View>
+          <View style={styles.metaBlock}>
+            <Text style={styles.metaText}>Deadline {formatDate(challenge.deadline)}</Text>
+            <Text style={styles.metaText}>Created {formatDate(challenge.createdAt)}</Text>
+          </View>
         </Card>
 
-        <View style={styles.meta}>
-          <Text style={styles.metaText}>
-            Deadline: {new Date(challenge.deadline).toLocaleDateString()}
-          </Text>
-          <Text style={styles.metaText}>
-            Created: {new Date(challenge.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-
-        {isCompleted && challenge.proofNote ? (
-          <Card variant="default" padding={4} style={styles.proofCard}>
-            <Text style={styles.proofLabel}>Proof</Text>
-            <Text style={styles.proofText}>{challenge.proofNote}</Text>
-          </Card>
-        ) : null}
-
-        {isOpen ? (
-          <View style={styles.actions}>
-            <Button
-              title="Claim Challenge"
-              onPress={() => {
-                // TODO: implement claim
-                navigation.goBack();
-              }}
-            />
+        <Card style={styles.card}>
+          <Text style={styles.cardLabel}>Proof Requirements</Text>
+          <View style={styles.requirements}>
+            {(challenge.proofRequirements?.length ? challenge.proofRequirements : ["Any clear proof"]).map((requirement) => (
+              <View key={requirement} style={styles.requirement}>
+                <Text style={styles.requirementText}>{requirement}</Text>
+              </View>
+            ))}
           </View>
+        </Card>
+
+        {!isCreator && challenge.status === "open" ? (
+          <Button title="Submit Proof" size="lg" onPress={openProofSheet} />
         ) : null}
 
-        {isClaimed ? (
-          <View style={styles.actions}>
-            <Button
-              title="Complete & Submit Proof"
-              onPress={() => {
-                // TODO: implement complete
-                navigation.goBack();
-              }}
-            />
+        {isCreator ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Submissions</Text>
+            {submittedEntries.length > 0 ? (
+              submittedEntries.map((entry) => (
+                <SubmissionCard
+                  key={entry.id}
+                  entry={entry}
+                  isResolving={resolvingEntryId === entry.id}
+                  onPickWinner={challenge.status === "open" ? () => void pickWinner(entry) : undefined}
+                />
+              ))
+            ) : (
+              <Card style={styles.card}>
+                <Text style={styles.emptyText}>No proof has been submitted yet.</Text>
+              </Card>
+            )}
           </View>
         ) : null}
       </ScrollView>
+
+      <ProofSubmissionSheet
+        visible={proofSheetOpen}
+        onClose={() => setProofSheetOpen(false)}
+        onSubmit={submitSelectedProof}
+        challengeTitle={challenge.title}
+      />
     </SafeAreaView>
   );
 }
 
+function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return "not set";
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "not set" : date.toLocaleString();
+}
+
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.linen[100],
+    backgroundColor: colors.black,
     flex: 1,
   },
+  loader: {
+    marginTop: spacing[10],
+  },
   scroll: {
+    gap: spacing[4],
     padding: spacing[4],
+    paddingBottom: spacing[8],
   },
   header: {
+    alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: spacing[3],
+  },
+  badges: {
+    flexDirection: "row",
+    gap: spacing[2],
   },
   title: {
-    color: colors.ink[900],
+    color: colors.white,
     fontSize: typography.sizes["2xl"],
     fontWeight: typography.weights.bold,
-    marginBottom: spacing[3],
   },
   description: {
-    color: colors.ash[600],
+    color: colors.ash[300],
     fontSize: typography.sizes.base,
-    marginBottom: spacing[4],
+    lineHeight: 22,
+  },
+  errorText: {
+    color: colors.wine[300],
+    fontSize: typography.sizes.sm,
+  },
+  card: {
+    gap: spacing[3],
   },
   rewardCard: {
-    alignItems: "center",
-    marginBottom: spacing[6],
-    backgroundColor: colors.glaze[50],
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing[4],
+    justifyContent: "space-between",
   },
-  rewardLabel: {
-    color: colors.ash[500],
+  cardLabel: {
+    color: colors.ash[600],
     fontSize: typography.sizes.sm,
-    marginBottom: spacing[2],
+    fontWeight: typography.weights.semibold,
+    textTransform: "uppercase",
   },
-  rewardAmount: {
+  rewardText: {
     color: colors.glaze[700],
     fontSize: typography.sizes["2xl"],
     fontWeight: typography.weights.bold,
+    marginTop: spacing[1],
   },
-  meta: {
-    marginBottom: spacing[6],
+  metaBlock: {
+    alignItems: "flex-end",
+    gap: spacing[1],
   },
   metaText: {
-    color: colors.ash[500],
+    color: colors.ash[600],
     fontSize: typography.sizes.sm,
-    marginBottom: spacing[1],
   },
-  proofCard: {
-    marginBottom: spacing[6],
-    backgroundColor: colors.glaze[50],
+  requirements: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2],
   },
-  proofLabel: {
-    color: colors.ash[500],
+  requirement: {
+    backgroundColor: colors.glaze[100],
+    borderRadius: 8,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  requirementText: {
+    color: colors.glaze[800],
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing[2],
+    fontWeight: typography.weights.bold,
+    textTransform: "capitalize",
   },
-  proofText: {
-    color: colors.ink[900],
-    fontSize: typography.sizes.base,
+  section: {
+    gap: spacing[3],
   },
-  actions: {
-    marginTop: spacing[2],
+  sectionTitle: {
+    color: colors.white,
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold,
+  },
+  emptyText: {
+    color: colors.ash[600],
+    fontSize: typography.sizes.sm,
   },
 });

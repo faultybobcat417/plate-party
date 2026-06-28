@@ -1,84 +1,235 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from "react-native";
-import { useAuth } from "../../context/AuthContext";
-import { getUserGoals, getActiveGoals, completeGoal, failGoal } from "../../api/goal";
-import { Goal } from "../../db/schema";
-import { useNavigation } from "@react-navigation/native";
+import { useCallback } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { EmptyState } from "../../components/composite/EmptyState";
+import { Button } from "../../components/primitives/Button";
+import { Card } from "../../components/primitives/Card";
+import { StreakFlame } from "../../components/streak/StreakFlame";
+import type { FeedStackParamList } from "../../navigation/types";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useGoalStore } from "../../stores/useGoalStore";
+import type { Goal } from "../../db/schema";
+import { colors, spacing, typography } from "../../theme";
+
+type GoalNav = NativeStackNavigationProp<FeedStackParamList>;
 
 export function GoalListScreen() {
-  const { user } = useAuth();
-  const navigation = useNavigation();
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<GoalNav>();
+  const { userId } = useCurrentUser();
+  const { goals, isLoading, error, fetchGoals, completeGoal, failGoal, clearError } = useGoalStore();
 
-  useEffect(() => {
-    if (user?.id) loadGoals();
-  }, [user?.id]);
+  useFocusEffect(
+    useCallback(() => {
+      void fetchGoals(userId ?? undefined);
+    }, [fetchGoals, userId]),
+  );
 
-  const loadGoals = async () => {
-    setLoading(true);
-    const data = await getUserGoals(user!.id);
-    setGoals(data);
-    setLoading(false);
-  };
-
-  const handleComplete = async (goalId: string) => {
-    await completeGoal(goalId);
-    loadGoals();
-  };
-
-  const handleFail = async (goalId: string) => {
-    await failGoal(goalId);
-    loadGoals();
-  };
+  const refresh = useCallback(() => {
+    clearError();
+    void fetchGoals(userId ?? undefined);
+  }, [clearError, fetchGoals, userId]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>My Goals</Text>
-      {loading ? <ActivityIndicator color="#FFD700" /> : (
-        <FlatList
-          data={goals}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={[styles.card, item.status === "completed" && styles.cardCompleted, item.status === "failed" && styles.cardFailed]}>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <Text style={styles.cardDesc}>{item.description || "No description"}</Text>
-              <Text style={styles.cardMeta}>Stake: {item.stakeAmount} Plates | Status: {item.status}</Text>
-              {item.status === "active" && (
-                <View style={styles.actions}>
-                  <TouchableOpacity style={styles.completeBtn} onPress={() => handleComplete(item.id)}><Text style={styles.completeText}>Complete</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.failBtn} onPress={() => handleFail(item.id)}><Text style={styles.failText}>Fail</Text></TouchableOpacity>
-                </View>
-              )}
-            </View>
-          )}
-          ListEmptyComponent={<Text style={styles.empty}>No goals yet. Create one!</Text>}
-        />
-      )}
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate("CreateGoal" as never)}>
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-    </View>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.eyebrow}>GROW</Text>
+          <Text style={styles.title}>My Goals</Text>
+        </View>
+        <Button title="New Goal" size="sm" onPress={() => navigation.navigate("CreateGoal")} />
+      </View>
+
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button title="Retry" size="sm" variant="secondary" onPress={refresh} />
+        </View>
+      ) : null}
+
+      <FlatList
+        data={goals}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <GoalListCard
+            goal={item}
+            onPress={() => navigation.navigate("GoalDetail", { goalId: item.id })}
+            onComplete={() => void completeGoal(item.id)}
+            onFail={() => void failGoal(item.id)}
+          />
+        )}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor={colors.glaze[500]} />}
+        ListEmptyComponent={
+          isLoading ? (
+            <ActivityIndicator color={colors.glaze[500]} />
+          ) : (
+            <EmptyState
+              icon="🌱"
+              title="No goals yet"
+              message="Create a personal goal, add an optional self-stake, and keep your streak alive."
+              actionLabel="Create Goal"
+              onAction={() => navigation.navigate("CreateGoal")}
+            />
+          )
+        }
+      />
+    </SafeAreaView>
   );
+}
+
+function GoalListCard({
+  goal,
+  onPress,
+  onComplete,
+  onFail,
+}: {
+  goal: Goal;
+  onPress: () => void;
+  onComplete: () => void;
+  onFail: () => void;
+}) {
+  const progress = getGoalProgress(goal);
+  const isActive = goal.status === "active";
+
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.cardTitle}>{goal.title}</Text>
+            <Text style={styles.cardDescription} numberOfLines={2}>{goal.description || "No description"}</Text>
+          </View>
+          <StreakFlame streak={goal.streakWeeks} />
+        </View>
+
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+
+        <View style={styles.metaRow}>
+          <Text style={styles.metaText}>{goal.status}</Text>
+          <Text style={styles.metaText}>{goal.stakeAmount} plates</Text>
+          <Text style={styles.metaText}>{goal.deadline ? goal.deadline.toLocaleDateString() : "No deadline"}</Text>
+        </View>
+
+        {isActive ? (
+          <View style={styles.actions}>
+            <Button title="Complete" size="sm" onPress={onComplete} />
+            <Button title="Missed" size="sm" variant="secondary" onPress={onFail} />
+          </View>
+        ) : null}
+      </Card>
+    </Pressable>
+  );
+}
+
+function getGoalProgress(goal: Goal): number {
+  if (goal.status === "completed") return 100;
+  if (goal.status === "failed") return 20;
+  return Math.min(90, 20 + goal.streakWeeks * 12);
 }
 
 export default GoalListScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0a0a0a", padding: 16 },
-  title: { fontSize: 24, fontWeight: "bold", color: "#FFD700", marginBottom: 16 },
-  card: { backgroundColor: "#1a1a1a", borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#333" },
-  cardCompleted: { borderColor: "#00aa00" },
-  cardFailed: { borderColor: "#aa0000" },
-  cardTitle: { fontSize: 18, fontWeight: "bold", color: "#fff", marginBottom: 4 },
-  cardDesc: { fontSize: 14, color: "#888", marginBottom: 8 },
-  cardMeta: { fontSize: 12, color: "#FFD700" },
-  actions: { flexDirection: "row", marginTop: 12, gap: 12 },
-  completeBtn: { backgroundColor: "#00aa00", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
-  completeText: { color: "#fff", fontWeight: "bold" },
-  failBtn: { backgroundColor: "#aa0000", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
-  failText: { color: "#fff", fontWeight: "bold" },
-  empty: { color: "#666", textAlign: "center", marginTop: 32 },
-  fab: { position: "absolute", right: 24, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: "#FFD700", justifyContent: "center", alignItems: "center" },
-  fabText: { fontSize: 24, fontWeight: "bold", color: "#0a0a0a" },
+  container: {
+    backgroundColor: colors.black,
+    flex: 1,
+  },
+  header: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: spacing[4],
+  },
+  eyebrow: {
+    color: colors.glaze[300],
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+  },
+  title: {
+    color: colors.white,
+    fontSize: typography.sizes["2xl"],
+    fontWeight: typography.weights.bold,
+  },
+  errorBanner: {
+    alignItems: "center",
+    backgroundColor: colors.wine[900],
+    borderColor: colors.wine[500],
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing[3],
+    marginHorizontal: spacing[4],
+    marginBottom: spacing[3],
+    padding: spacing[3],
+  },
+  errorText: {
+    color: colors.white,
+    flex: 1,
+    fontSize: typography.sizes.sm,
+  },
+  list: {
+    flexGrow: 1,
+    paddingBottom: spacing[8],
+  },
+  card: {
+    gap: spacing[3],
+    marginBottom: spacing[3],
+    marginHorizontal: spacing[4],
+  },
+  cardHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing[3],
+    justifyContent: "space-between",
+  },
+  titleBlock: {
+    flex: 1,
+  },
+  cardTitle: {
+    color: colors.ink[900],
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.bold,
+  },
+  cardDescription: {
+    color: colors.ash[600],
+    fontSize: typography.sizes.sm,
+    marginTop: spacing[1],
+  },
+  progressTrack: {
+    backgroundColor: colors.ash[200],
+    borderRadius: 999,
+    height: 8,
+    overflow: "hidden",
+  },
+  progressFill: {
+    backgroundColor: colors.glaze[600],
+    height: "100%",
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2],
+  },
+  metaText: {
+    color: colors.ash[600],
+    fontSize: typography.sizes.sm,
+    textTransform: "capitalize",
+  },
+  actions: {
+    flexDirection: "row",
+    gap: spacing[2],
+  },
 });

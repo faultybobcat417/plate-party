@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from "@react-navigation/native";
+import type { GameType } from "../api/game";
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -22,6 +23,8 @@ export type FeedStackParamList = {
   EnterStake: { stakeId: string; title: string; creator: string };
   CreateChallenge: undefined;
   ChallengeDetail: { challengeId: string };
+  CreateGoal: undefined;
+  GoalDetail: { goalId: string };
 };
 
 export type MarketStackParamList = {
@@ -64,7 +67,8 @@ export type ProfileStackParamList = {
 
 export type PlayStackParamList = {
   PlayHome: undefined;
-  GameScreen: { gameId: string };
+  GameScreen: { gameId: GameType; sessionId?: string };
+  GameHistory: undefined;
   WordGuess: undefined;
   RPS: undefined;
   TicTacToe: undefined;

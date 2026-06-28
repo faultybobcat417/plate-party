@@ -16,8 +16,8 @@ export type ChallengeCardProps = {
 function getStatusColor(status: Challenge["status"]) {
   switch (status) {
     case "open": return colors.glaze[600];
-    case "claimed": return "#F59E0B";
-    case "completed": return "#10B981";
+    case "claimed": return colors.mustard[500];
+    case "completed": return colors.semantic.success;
     case "expired": return colors.ash[500];
     default: return colors.ash[500];
   }
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
   },
   timeUrgent: {
-    color: "#EF4444",
+    color: colors.wine[500],
     fontWeight: typography.weights.bold,
   },
   title: {
@@ -206,13 +206,13 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
   },
   pendingBadge: {
-    backgroundColor: "#8B5CF620",
+    backgroundColor: colors.glaze[100],
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
     borderRadius: 8,
   },
   pendingText: {
-    color: "#8B5CF6",
+    color: colors.glaze[700],
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.bold,
   },

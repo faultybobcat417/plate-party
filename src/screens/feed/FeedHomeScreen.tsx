@@ -1,100 +1,106 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
-  Pressable,
-  ActivityIndicator,
+  Text,
+  View,
 } from "react-native";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, spacing, typography } from "../../theme";
-
-import { FeedTopTabs, type FeedTab } from "../../components/composite/FeedTopTabs";
-import { MeatCard } from "../../components/composite/MeatCard";
-import StakeCard from "../../components/composite/StakeCard";
-import { CreateMeatPostSheet } from "../../components/composite/CreateMeatPostSheet";
-import { CreateStakePostSheet } from "../../components/composite/CreateStakePostSheet";
-import { CreateChallengeButton } from "../../components/composite/CreateChallengeButton";
 import { ChallengeCard } from "../../components/composite/ChallengeCard";
-import { SortDropdown } from "../../components/composite/SortDropdown";
+import { EmptyState } from "../../components/composite/EmptyState";
+import { FeedTopTabs, type FeedTab } from "../../components/composite/FeedTopTabs";
 import { ProofSubmissionSheet } from "../../components/composite/ProofSubmissionSheet";
-import { SteakFeedList } from "../../components/feed/SteakFeedList";
-
+import { Button } from "../../components/primitives/Button";
+import { Card } from "../../components/primitives/Card";
+import { StreakFlame } from "../../components/streak/StreakFlame";
 import { useChallengeStore } from "../../stores/useChallengeStore";
-import { useMeatStore } from "../../stores/useMeatStore";
-import { useStakeStore } from "../../stores/useStakeStore";
+import { useGoalStore } from "../../stores/useGoalStore";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { useTutorialCheck } from "../../hooks/useTutorialCheck";
-import { FreePlateButton } from "../../components/tutorial/FreePlateButton";
-import { TutorialSheet } from "../../components/tutorial/TutorialSheet";
-
-import type { FeedStackParamList } from "../../navigation/types";
+import { colors, spacing, typography } from "../../theme";
 import type { Challenge } from "../../api/challenge";
-import type { MeatPost } from "../../api/meat";
-import type { StakePost } from "../../api/stake";
+import type { FeedStackParamList } from "../../navigation/types";
+import type { Goal } from "../../db/schema";
 
 type FeedNav = NativeStackNavigationProp<FeedStackParamList>;
 
-function ListEmpty({ emoji, title, message, ctaLabel, onCta }: {
-  emoji: string; title: string; message: string; ctaLabel?: string; onCta?: () => void;
-}) {
+export function FeedHomeScreen() {
+  const [activeTab, setActiveTab] = useState<FeedTab>("stake");
+
   return (
-    <View style={styles.empty}>
-      <Text style={styles.emptyEmoji}>{emoji}</Text>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      <Text style={styles.emptyText}>{message}</Text>
-      {ctaLabel && onCta ? (
-        <Pressable onPress={onCta} style={styles.emptyButton} accessibilityRole="button">
-          <Text style={styles.emptyButtonText}>{ctaLabel}</Text>
-        </Pressable>
-      ) : null}
-    </View>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <FeedTopTabs activeTab={activeTab} onTabChange={setActiveTab} />
+      {activeTab === "stake" ? <SteakTab /> : <GrowTab />}
+    </SafeAreaView>
   );
 }
 
-function ErrorRetry({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <View style={styles.empty}>
-      <Text style={styles.emptyEmoji}>⚠️</Text>
-      <Text style={styles.emptyTitle}>Something went wrong</Text>
-      <Text style={styles.emptyText}>{message}</Text>
-      <Pressable onPress={onRetry} style={styles.emptyButton} accessibilityRole="button" accessibilityLabel="Retry">
-        <Text style={styles.emptyButtonText}>Try Again</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function MyFeedTabContent({ navigation }: { navigation: FeedNav }) {
-  const { sortedChallenges, isLoading, error, sortBy, pendingProofs, loadChallenges, setSort, submitProof, clearError } = useChallengeStore();
+function SteakTab() {
+  const navigation = useNavigation<FeedNav>();
+  const {
+    sortedChallenges,
+    pendingProofs,
+    isLoading,
+    error,
+    hasMore,
+    loadChallenges,
+    loadMoreChallenges,
+    submitProof,
+    clearError,
+  } = useChallengeStore();
+  const { userId } = useCurrentUser();
   const [proofSheetOpen, setProofSheetOpen] = useState(false);
   const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
 
-  useFocusEffect(useCallback(() => { loadChallenges(); }, [loadChallenges]));
+  useFocusEffect(useCallback(() => { void loadChallenges(); }, [loadChallenges]));
 
-  const handleRefresh = useCallback(() => { clearError(); loadChallenges(); }, [loadChallenges, clearError]);
-  const handleSubmitProof = (challenge: Challenge) => { setSelectedChallenge(challenge); setProofSheetOpen(true); };
-  const handleProofSubmit = (type: "camera" | "photo" | "file" | "text", _data: string) => {
+  const refresh = useCallback(() => {
+    clearError();
+    void loadChallenges();
+  }, [clearError, loadChallenges]);
+
+  const openProofSheet = (challenge: Challenge) => {
+    if (!userId) {
+      Alert.alert("Sign in required", "Please sign in before submitting proof.");
+      return;
+    }
+    setSelectedChallenge(challenge);
+    setProofSheetOpen(true);
+  };
+
+  const submitSelectedProof = async (proofType: "camera" | "photo" | "file" | "text", proofData: string) => {
     if (!selectedChallenge) return;
-    void submitProof({ challengeId: selectedChallenge.id, submitterId: "user-1", proofType: type });
+    await submitProof({
+      challengeId: selectedChallenge.id,
+      submitterId: userId ?? "",
+      proofType,
+      proofData,
+    });
   };
 
   return (
-    <View style={styles.tabContainer}>
+    <View style={styles.tab}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Feed</Text>
-          <Text style={styles.subtitle}>Challenges, bounties, proof.</Text>
+          <Text style={styles.title}>STEAK</Text>
+          <Text style={styles.subtitle}>Public challenges with plate rewards.</Text>
         </View>
-        <SortDropdown selected={sortBy} onSelect={setSort} />
+        <Button title="Create" size="sm" onPress={() => navigation.navigate("CreateChallenge")} />
       </View>
-      <CreateChallengeButton onPress={() => navigation.navigate("CreateChallenge")} />
-      {error && !isLoading ? <ErrorRetry message={error} onRetry={handleRefresh} /> : null}
+
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button title="Retry" size="sm" variant="secondary" onPress={refresh} />
+        </View>
+      ) : null}
+
       <FlatList
         data={sortedChallenges}
         keyExtractor={(item) => item.id}
@@ -103,167 +109,241 @@ function MyFeedTabContent({ navigation }: { navigation: FeedNav }) {
             challenge={item}
             pendingProofs={pendingProofs.get(item.id)}
             onPress={() => navigation.navigate("ChallengeDetail", { challengeId: item.id })}
-            onSubmitProof={() => handleSubmitProof(item)}
+            onSubmitProof={() => openProofSheet(item)}
           />
         )}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} tintColor={colors.primary.base} />}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor={colors.glaze[600]} />}
+        onEndReachedThreshold={0.35}
+        onEndReached={() => {
+          if (hasMore) void loadMoreChallenges();
+        }}
+        ListFooterComponent={isLoading && sortedChallenges.length > 0 ? <ActivityIndicator color={colors.glaze[600]} /> : null}
         ListEmptyComponent={
-          !isLoading && !error ? (
-            <ListEmpty emoji="📭" title="No challenges yet" message="Start a challenge and get the party moving."
-              ctaLabel="Create First Challenge" onCta={() => navigation.navigate("CreateChallenge")} />
-          ) : null
-        }
-      />
-      <ProofSubmissionSheet visible={proofSheetOpen} onClose={() => setProofSheetOpen(false)}
-        onSubmit={handleProofSubmit} challengeTitle={selectedChallenge?.title ?? ""} />
-    </View>
-  );
-}
-
-function MeatTabContent() {
-  const { posts, isLoading, error, loadPosts, interact, clearError } = useMeatStore();
-  const [createVisible, setCreateVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const currentUser = useCurrentUser();
-
-  const onRefresh = useCallback(() => { clearError(); loadPosts(); }, [loadPosts, clearError]);
-  useFocusEffect(useCallback(() => { loadPosts(); }, [loadPosts]));
-
-  const handlePayToInteract = async (post: MeatPost, type: "like" | "comment" | "dm") => {
-    const plates = type === "like" ? 1 : type === "comment" ? 5 : post.plateCost;
-    try { await interact({ postId: post.id, userId: (currentUser.userId ?? ""), interactionType: type, platesPaid: plates }); } catch { /* store handles error */ }
-  };
-
-  const handleCreate = async (input: { caption: string; bioSnippet: string; plateCost: number }) => {
-    setSubmitting(true);
-    try {
-      await useMeatStore.getState().addPost({ creatorId: (currentUser.userId ?? ""), creatorName: (currentUser.userId?.slice(0, 8) || "You"), creatorAvatar: undefined, ...input });
-      setCreateVisible(false);
-    } finally { setSubmitting(false); }
-  };
-
-  return (
-    <View style={styles.tabContainer}>
-      {error && !isLoading ? <ErrorRetry message={error} onRetry={onRefresh} /> : null}
-      <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={colors.primary.base} />}
-        ListEmptyComponent={
-          !isLoading && !error ? (
-            <ListEmpty emoji="🥩" title="No meat posts yet" message="Be the first to drop a post."
-              ctaLabel="Post Something" onCta={() => setCreateVisible(true)} />
-          ) : null
-        }
-        renderItem={({ item }) => <MeatCard post={item} onPayToInteract={(type) => void handlePayToInteract(item, type)} />}
-        contentContainerStyle={styles.list}
-      />
-      <Pressable style={styles.fab} onPress={() => setCreateVisible(true)} accessibilityRole="button" accessibilityLabel="Create meat post">
-        <Text style={styles.fabText}>+</Text>
-      </Pressable>
-      <CreateMeatPostSheet visible={createVisible} onClose={() => setCreateVisible(false)} onSubmit={handleCreate} isLoading={submitting} />
-    </View>
-  );
-}
-
-function StakeTabContent() {
-  const { posts, isLoading, error, loadPosts, stake, clearError } = useStakeStore();
-  const [createVisible, setCreateVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const currentUser = useCurrentUser();
-
-  const onRefresh = useCallback(() => { clearError(); loadPosts(); }, [loadPosts, clearError]);
-  useFocusEffect(useCallback(() => { loadPosts(); }, [loadPosts]));
-
-  const handleStake = async (post: StakePost, optionIndex: number) => {
-    try { await stake({ postId: post.id, userId: (currentUser.userId ?? ""), optionIndex, platesStaked: 10 }); } catch { /* store handles error */ }
-  };
-
-  const handleCreate = async (input: { content: string; targetPlates: number; deadline: string; options: { label: string; staked: number }[] }) => {
-    setSubmitting(true);
-    try {
-      await useStakeStore.getState().addPost({ creatorId: (currentUser.userId ?? ""), creatorName: (currentUser.userId?.slice(0, 8) || "You"), creatorAvatar: undefined, ...input });
-      setCreateVisible(false);
-    } finally { setSubmitting(false); }
-  };
-
-  const showDemoFeed = !isLoading && !error && posts.length === 0;
-
-  return (
-    <View style={styles.tabContainer}>
-      {error && !isLoading ? <ErrorRetry message={error} onRetry={onRefresh} /> : null}
-      {showDemoFeed ? <SteakFeedList /> : (
-        <FlatList
-          data={posts}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={colors.primary.base} />}
-          ListEmptyComponent={
-            !isLoading && !error ? (
-              <ListEmpty emoji="🥩" title="No stakes on the table" message="Start a stake and let people vote with plates."
-                ctaLabel="Start a Stake" onCta={() => setCreateVisible(true)} />
-            ) : null
-          }
-          renderItem={({ item }) => (
-            <StakeCard 
-              post={item} 
-              onPress={() => (navigation as any).navigate("EnterStake", { 
-                stakeId: item.id, 
-                title: item.title || item.question || "Untitled",
-                creator: item.creatorName || item.creator || "Anonymous"
-              })}
+          !isLoading ? (
+            <EmptyState
+              icon="🥩"
+              title="No open challenges"
+              message="Create a plate-backed challenge and let friends prove they can finish it."
+              actionLabel="Create Challenge"
+              onAction={() => navigation.navigate("CreateChallenge")}
             />
-          )}
-          contentContainerStyle={styles.list}
-        />
-      )}
-      <Pressable style={styles.fab} onPress={() => setCreateVisible(true)} accessibilityRole="button" accessibilityLabel="Create stake">
-        <Text style={styles.fabText}>+</Text>
-      </Pressable>
-      <CreateStakePostSheet visible={createVisible} onClose={() => setCreateVisible(false)} onSubmit={handleCreate} isLoading={submitting} />
+          ) : <ActivityIndicator color={colors.glaze[600]} />
+        }
+      />
+
+      <ProofSubmissionSheet
+        visible={proofSheetOpen}
+        onClose={() => setProofSheetOpen(false)}
+        onSubmit={submitSelectedProof}
+        challengeTitle={selectedChallenge?.title ?? ""}
+      />
     </View>
   );
 }
 
-export function FeedHomeScreen() {
-  const [activeTab, setActiveTab] = useState<FeedTab>("stake");
+function GrowTab() {
   const navigation = useNavigation<FeedNav>();
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const { userId } = useCurrentUser();
+  const { goals, isLoading, error, fetchGoals, completeGoal, failGoal, clearError } = useGoalStore();
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case "stake": return <StakeTabContent />;
-      case "myFeed": return <MyFeedTabContent navigation={navigation} />;
-      case "meat" as any: return <MeatTabContent />;
-      default: return null;
-    }
-  };
+  useFocusEffect(
+    useCallback(() => {
+      void fetchGoals(userId ?? undefined);
+    }, [fetchGoals, userId]),
+  );
+
+  const refresh = useCallback(() => {
+    clearError();
+    void fetchGoals(userId ?? undefined);
+  }, [clearError, fetchGoals, userId]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <FeedTopTabs activeTab={activeTab} onTabChange={setActiveTab} />
-      {renderTabContent()}
-      <FreePlateButton tab="feed" onPress={() => setSheetVisible(true)} />
-      <TutorialSheet visible={sheetVisible} tab="feed" onClose={() => setSheetVisible(false)} onNavigate={(stepId) => { if (stepId === "feed_create_stake") { /* FAB handles */ } }} />
-    </SafeAreaView>
+    <View style={styles.tab}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>GROW</Text>
+          <Text style={styles.subtitle}>Private goals, streaks, and self-stakes.</Text>
+        </View>
+        <Button title="New Goal" size="sm" onPress={() => navigation.navigate("CreateGoal")} />
+      </View>
+
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button title="Retry" size="sm" variant="secondary" onPress={refresh} />
+        </View>
+      ) : null}
+
+      <FlatList
+        data={goals}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <GoalCard
+            goal={item}
+            onPress={() => navigation.navigate("GoalDetail", { goalId: item.id })}
+            onComplete={() => void completeGoal(item.id)}
+            onFail={() => void failGoal(item.id)}
+          />
+        )}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor={colors.glaze[600]} />}
+        ListEmptyComponent={
+          !isLoading ? (
+            <EmptyState
+              icon="🌱"
+              title="No goals yet"
+              message="Create a personal goal, add an optional self-stake, and keep your streak alive."
+              actionLabel="Create Goal"
+              onAction={() => navigation.navigate("CreateGoal")}
+            />
+          ) : <ActivityIndicator color={colors.glaze[600]} />
+        }
+      />
+    </View>
+  );
+}
+
+function GoalCard({ goal, onPress, onComplete, onFail }: {
+  goal: Goal;
+  onPress: () => void;
+  onComplete: () => void;
+  onFail: () => void;
+}) {
+  const deadlineLabel = goal.deadline ? new Date(goal.deadline).toLocaleDateString() : "No deadline";
+  const isActive = goal.status === "active";
+  const progress = goal.status === "completed" ? 100 : goal.status === "failed" ? 25 : Math.min(85, goal.streakWeeks * 12 + 20);
+
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={styles.goalCard}>
+        <View style={styles.goalHeader}>
+          <View style={styles.goalTitleBlock}>
+            <Text style={styles.goalTitle}>{goal.title}</Text>
+            <Text style={styles.goalDescription} numberOfLines={2}>{goal.description || "No description"}</Text>
+          </View>
+          <StreakFlame streak={goal.streakWeeks} />
+          <Text style={styles.goalStatus}>{goal.status}</Text>
+        </View>
+
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+
+        <View style={styles.goalMeta}>
+          <Text style={styles.goalMetaText}>🍽 {goal.stakeAmount} self-staked</Text>
+          <Text style={styles.goalMetaText}>🔥 {goal.streakWeeks} weeks</Text>
+          <Text style={styles.goalMetaText}>{deadlineLabel}</Text>
+        </View>
+
+        {isActive ? (
+          <View style={styles.goalActions}>
+            <Button title="Complete" size="sm" onPress={onComplete} />
+            <Button title="Missed" size="sm" variant="secondary" onPress={onFail} />
+          </View>
+        ) : null}
+      </Card>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.neutral[50] },
-  tabContainer: { flex: 1 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: spacing[4], paddingTop: spacing[4], paddingBottom: spacing[2] },
-  title: { color: colors.neutral[900], fontSize: typography.sizes["2xl"], fontWeight: typography.weights.bold },
-  subtitle: { color: colors.neutral[500], fontSize: typography.sizes.sm, marginTop: spacing[1] },
-  list: { paddingTop: spacing[2], paddingBottom: spacing[4] },
-  empty: { alignItems: "center", paddingTop: spacing[10], paddingHorizontal: spacing[6] },
-  emptyEmoji: { fontSize: 48, marginBottom: spacing[3] },
-  emptyTitle: { color: colors.neutral[900], fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, marginBottom: spacing[2], textAlign: "center" },
-  emptyText: { color: colors.neutral[500], fontSize: typography.sizes.base, marginBottom: spacing[4], textAlign: "center" },
-  emptyButton: { backgroundColor: colors.primary.base, paddingHorizontal: spacing[6], paddingVertical: spacing[3], borderRadius: 99, minHeight: 44, justifyContent: "center" },
-  emptyButtonText: { color: colors.neutral[0], fontWeight: typography.weights.bold, fontSize: typography.sizes.base },
-  fab: { position: "absolute", right: spacing[4], bottom: spacing[6], width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary.base, justifyContent: "center", alignItems: "center", ...theme.shadows.lg },
-  fabText: { fontSize: 28, color: colors.neutral[0], fontWeight: typography.weights.bold },
+  container: {
+    backgroundColor: colors.black,
+    flex: 1,
+  },
+  tab: {
+    flex: 1,
+  },
+  header: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[3],
+  },
+  title: {
+    color: colors.white,
+    fontSize: typography.sizes["2xl"],
+    fontWeight: typography.weights.bold,
+  },
+  subtitle: {
+    color: colors.ash[400],
+    fontSize: typography.sizes.sm,
+    marginTop: spacing[1],
+  },
+  list: {
+    flexGrow: 1,
+    paddingBottom: spacing[8],
+  },
+  errorBanner: {
+    alignItems: "center",
+    backgroundColor: colors.wine[900],
+    borderColor: colors.wine[500],
+    borderWidth: 1,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: spacing[3],
+    margin: spacing[4],
+    padding: spacing[3],
+  },
+  errorText: {
+    color: colors.white,
+    flex: 1,
+    fontSize: typography.sizes.sm,
+  },
+  goalCard: {
+    gap: spacing[3],
+    marginBottom: spacing[3],
+    marginHorizontal: spacing[4],
+  },
+  goalHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  goalTitleBlock: {
+    flex: 1,
+    paddingRight: spacing[3],
+  },
+  goalTitle: {
+    color: colors.ink[900],
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.bold,
+  },
+  goalDescription: {
+    color: colors.ash[600],
+    fontSize: typography.sizes.sm,
+    marginTop: spacing[1],
+  },
+  goalStatus: {
+    color: colors.glaze[700],
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    textTransform: "uppercase",
+  },
+  progressTrack: {
+    backgroundColor: colors.ash[200],
+    borderRadius: 999,
+    height: 8,
+    overflow: "hidden",
+  },
+  progressFill: {
+    backgroundColor: colors.glaze[600],
+    height: "100%",
+  },
+  goalMeta: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing[2],
+  },
+  goalMetaText: {
+    color: colors.ash[600],
+    fontSize: typography.sizes.sm,
+  },
+  goalActions: {
+    flexDirection: "row",
+    gap: spacing[2],
+  },
 });
-
-import { theme } from "../../theme";

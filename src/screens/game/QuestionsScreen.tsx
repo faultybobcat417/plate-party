@@ -15,6 +15,7 @@ import { typography } from "../../theme/typography";
 import { useGameStore } from "../../stores/useGameStore";
 import { calculatePlates } from "../../api/game";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { pickRandom } from "../../lib/random";
 
 const ITEMS = [
   { name: "Pizza", clues: ["Italian", "Cheesy", "Round", "Slice it", "Pepperoni"] },
@@ -30,7 +31,7 @@ const ITEMS = [
 ];
 
 function getRandomItem() {
-  return ITEMS[Math.floor(Math.random() * ITEMS.length)];
+  return pickRandom(ITEMS);
 }
 
 export function QuestionsScreen() {

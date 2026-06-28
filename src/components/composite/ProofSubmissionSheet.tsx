@@ -12,13 +12,14 @@ import {
 import { colors } from "../../theme/colors";
 import { spacing } from "../../theme/spacing";
 import { typography } from "../../theme/typography";
+import { ProofUploader } from "./ProofUploader";
 
 export type ProofType = "camera" | "photo" | "file" | "text";
 
 export type ProofSubmissionSheetProps = {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (type: ProofType, data: string) => void;
+  onSubmit: (type: ProofType, data: string) => void | Promise<void>;
   challengeTitle: string;
 };
 
@@ -33,14 +34,21 @@ export function ProofSubmissionSheet({ visible, onClose, onSubmit, challengeTitl
     { type: "text", emoji: "📝", label: "Text Note", desc: "Write your proof" },
   ];
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedType) return;
-    const data = selectedType === "text" ? textInput : `[${selectedType}] proof placeholder`;
     if (selectedType === "text" && !textInput.trim()) {
       Alert.alert("Empty Note", "Please write something first.");
       return;
     }
-    onSubmit(selectedType, data);
+    await onSubmit(selectedType, textInput.trim());
+    setSelectedType(null);
+    setTextInput("");
+    onClose();
+  };
+
+  const handleUploaded = async (uri: string) => {
+    if (!selectedType || selectedType === "text") return;
+    await onSubmit(selectedType, uri);
     setSelectedType(null);
     setTextInput("");
     onClose();
@@ -92,27 +100,20 @@ export function ProofSubmissionSheet({ visible, onClose, onSubmit, challengeTitl
                   textAlignVertical="top"
                 />
               ) : (
-                <View style={styles.placeholderBox}>
-                  <Text style={styles.placeholderEmoji}>
-                    {PROOF_OPTIONS.find((o) => o.type === selectedType)?.emoji}
-                  </Text>
-                  <Text style={styles.placeholderText}>
-                    {selectedType === "camera" && "Camera would open here"}
-                    {selectedType === "photo" && "Photo picker would open here"}
-                    {selectedType === "file" && "File picker would open here"}
-                  </Text>
-                </View>
+                <ProofUploader type={selectedType} onUploaded={(proof) => void handleUploaded(proof.uri)} />
               )}
 
-              <Pressable
-                onPress={handleSubmit}
-                style={({ pressed }) => [
-                  styles.submitButton,
-                  pressed && styles.submitButtonPressed,
-                ]}
-              >
-                <Text style={styles.submitText}>Submit for Review</Text>
-              </Pressable>
+              {selectedType === "text" ? (
+                <Pressable
+                  onPress={() => void handleSubmit()}
+                  style={({ pressed }) => [
+                    styles.submitButton,
+                    pressed && styles.submitButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.submitText}>Submit for Review</Text>
+                </Pressable>
+              ) : null}
 
               <Pressable onPress={() => setSelectedType(null)} style={styles.backButton}>
                 <Text style={styles.backText}>← Back</Text>
@@ -217,24 +218,6 @@ const styles = StyleSheet.create({
     color: colors.ink[900],
     backgroundColor: colors.linen[100],
     height: 120,
-  },
-  placeholderBox: {
-    height: 200,
-    backgroundColor: colors.ash[100],
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderStyle: "dashed",
-    borderColor: colors.ash[300],
-  },
-  placeholderEmoji: {
-    fontSize: 48,
-    marginBottom: spacing[2],
-  },
-  placeholderText: {
-    color: colors.ash[500],
-    fontSize: typography.sizes.base,
   },
   submitButton: {
     backgroundColor: colors.glaze[600],

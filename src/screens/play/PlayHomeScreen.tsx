@@ -13,14 +13,15 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { colors, spacing, typography } from "../../theme";
 import { OnlineUsersHeader } from "../../components/play/OnlineUsersHeader";
 import type { PlayStackParamList } from "../../navigation/types";
+import type { GameType } from "../../api/game";
 
-const GAMES = [
+const GAMES: { id: GameType; title: string; description: string; emoji: string }[] = [
   { id: "memory", title: "Memory Match", description: "Find the pairs", emoji: "🧠" },
   { id: "questions", title: "20 Questions", description: "Yes or no guessing", emoji: "❓" },
-  { id: "quickmath", title: "Quick Math", description: "Speed arithmetic", emoji: "🔢" },
+  { id: "quick-math", title: "Quick Math", description: "Speed arithmetic", emoji: "🔢" },
   { id: "rps", title: "Rock Paper Scissors", description: "Best of 5 wins", emoji: "✊" },
-  { id: "tictactoe", title: "Tic-Tac-Toe", description: "Classic 3x3 grid", emoji: "⭕" },
-  { id: "wordguess", title: "Word Guess", description: "Guess the word", emoji: "🔤" },
+  { id: "tic-tac-toe", title: "Tic-Tac-Toe", description: "Classic 3x3 grid", emoji: "⭕" },
+  { id: "word-guess", title: "Word Guess", description: "Guess the word", emoji: "🔤" },
 ];
 
 type PlayNav = NativeStackNavigationProp<PlayStackParamList>;

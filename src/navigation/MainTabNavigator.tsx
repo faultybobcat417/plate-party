@@ -10,7 +10,8 @@ import { PartyStackNavigator } from "./PartyStackNavigator";
 import { PlayStackNavigator } from "./PlayStackNavigator";
 import { ProfileStackNavigator } from "./ProfileStackNavigator";
 import { OnlineBadge } from "../components/play/OnlineBadge";
-import { useOnlineStore, startOnlinePolling, stopOnlinePolling } from "../stores/useOnlineStore";
+import { useOnlineStore, startOnlinePresence, stopOnlinePresence } from "../stores/useOnlineStore";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 import type { MainTabParamList } from "./types";
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -40,10 +41,12 @@ function PlayTabIcon({ focused }: { focused: boolean }) {
 }
 
 export function MainTabNavigator() {
+  const { userId } = useCurrentUser();
+
   useEffect(() => {
-    startOnlinePolling();
-    return () => stopOnlinePolling();
-  }, []);
+    void startOnlinePresence(userId);
+    return () => stopOnlinePresence();
+  }, [userId]);
 
   return (
     <Tab.Navigator

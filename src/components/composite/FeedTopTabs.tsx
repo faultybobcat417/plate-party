@@ -9,8 +9,8 @@ export interface FeedTopTabsProps {
 }
 
 const TABS: { key: FeedTab; label: string }[] = [
-  { key: "stake", label: "🥩 Stake" },
-  { key: "myFeed", label: "📋 My Feed" },
+  { key: "stake", label: "🥩 STEAK" },
+  { key: "myFeed", label: "🌱 GROW" },
 ];
 
 export function FeedTopTabs({ activeTab, onTabChange }: FeedTopTabsProps) {

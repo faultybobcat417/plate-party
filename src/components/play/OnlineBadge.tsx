@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Animated } from "react-native";
 
+import { colors, typography } from "../../theme";
+
 interface OnlineBadgeProps {
   count: number;
 }
@@ -53,13 +55,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 4,
     zIndex: 10,
-    backgroundColor: "#FF3B30",
+    backgroundColor: colors.wine[500],
   },
   text: {
     textAlign: "center",
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "800",
+    color: colors.white,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
     lineHeight: 18,
   },
 });

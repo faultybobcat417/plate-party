@@ -8,6 +8,7 @@ import { TicTacToeScreen } from "../screens/game/TicTacToeScreen";
 import { MemoryScreen } from "../screens/game/MemoryScreen";
 import { QuickMathScreen } from "../screens/game/QuickMathScreen";
 import { QuestionsScreen } from "../screens/game/QuestionsScreen";
+import { GameHistoryScreen } from "../screens/game/GameHistoryScreen";
 import type { PlayStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<PlayStackParamList>();
@@ -17,6 +18,7 @@ export function PlayStackNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: true }}>
       <Stack.Screen name="PlayHome" component={PlayHomeScreen} options={{ title: "Play", headerShown: false }} />
       <Stack.Screen name="GameScreen" component={GameScreen} options={{ title: "Game" }} />
+      <Stack.Screen name="GameHistory" component={GameHistoryScreen} options={{ title: "Game History" }} />
       <Stack.Screen name="WordGuess" component={WordGuessScreen} options={{ title: "Word Guess" }} />
       <Stack.Screen name="RPS" component={RpsScreen} options={{ title: "Rock Paper Scissors" }} />
       <Stack.Screen name="TicTacToe" component={TicTacToeScreen} options={{ title: "Tic Tac Toe" }} />

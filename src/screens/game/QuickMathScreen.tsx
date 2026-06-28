@@ -18,6 +18,7 @@ import { useGameStore } from "../../stores/useGameStore";
 import { calculatePlates } from "../../api/game";
 import type { PlayStackParamList } from "../../navigation/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { pickRandom, randomInt } from "../../lib/random";
 
 type PlayNav = NativeStackNavigationProp<PlayStackParamList>;
 
@@ -30,16 +31,16 @@ type Problem = {
 
 function generateProblem(): Problem {
   const ops: ("+" | "-" | "×")[] = ["+", "-", "×"];
-  const op = ops[Math.floor(Math.random() * ops.length)] ?? "+";
-  let a = Math.floor(Math.random() * 12) + 1;
-  let b = Math.floor(Math.random() * 12) + 1;
+  const op = pickRandom(ops);
+  let a = randomInt(12) + 1;
+  let b = randomInt(12) + 1;
 
   if (op === "-") {
     if (a < b) [a, b] = [b, a];
   }
   if (op === "×") {
-    a = Math.floor(Math.random() * 10) + 1;
-    b = Math.floor(Math.random() * 10) + 1;
+    a = randomInt(10) + 1;
+    b = randomInt(10) + 1;
   }
 
   const answer = op === "+" ? a + b : op === "-" ? a - b : a * b;

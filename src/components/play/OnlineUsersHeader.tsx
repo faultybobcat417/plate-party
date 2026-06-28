@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, Animated, StyleSheet } from "react-native";
 import { useOnlineStore } from "../../stores/useOnlineStore";
+import { colors, spacing, typography } from "../../theme";
 
 export function OnlineUsersHeader() {
   const onlineCount = useOnlineStore((state) => state.onlineCount);
@@ -52,12 +53,12 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#34C759",
-    marginRight: 6,
+    backgroundColor: colors.semantic.success,
+    marginRight: spacing[2],
   },
   text: {
-    fontSize: 13,
-    color: "#888888",
-    fontWeight: "500",
+    color: colors.ash[400],
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
   },
 });

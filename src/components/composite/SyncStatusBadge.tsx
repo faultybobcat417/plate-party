@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { Badge } from "../primitives/Badge";
 import { spacing } from "../../theme";
@@ -6,9 +6,19 @@ import { spacing } from "../../theme";
 export type SyncStatusBadgeProps = {
   pendingCount: number;
   isProcessing: boolean;
+  isOnline?: boolean;
+  error?: string | null;
 };
 
-export function SyncStatusBadge({ pendingCount, isProcessing }: SyncStatusBadgeProps) {
+export function SyncStatusBadge({ pendingCount, isProcessing, isOnline = true, error = null }: SyncStatusBadgeProps) {
+  if (!isOnline) {
+    return <Badge label={pendingCount > 0 ? `Offline • ${pendingCount} queued` : "Offline"} variant="warning" />;
+  }
+
+  if (error) {
+    return <Badge label="Sync issue" variant="danger" />;
+  }
+
   if (isProcessing) {
     return <Badge label="Syncing..." variant="info" />;
   }

@@ -19,6 +19,7 @@ import { useGameStore } from "../../stores/useGameStore";
 import { calculatePlates } from "../../api/game";
 import type { PlayStackParamList } from "../../navigation/types";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { pickRandom } from "../../lib/random";
 
 type PlayNav = NativeStackNavigationProp<PlayStackParamList>;
 
@@ -29,7 +30,7 @@ const WORDS = [
 ];
 
 function getRandomWord() {
-  return WORDS[Math.floor(Math.random() * WORDS.length)] ?? "PARTY";
+  return pickRandom(WORDS);
 }
 
 export function WordGuessScreen() {
