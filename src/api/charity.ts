@@ -130,6 +130,7 @@ export async function donatePlates(userId: string, charity: Charity, platesAmoun
   return donations.find((donation) => donation.charityName === parsed.charity.name) ?? {
     id: donationId ?? "",
     userId: scopedUserId,
+    challengeId: null,
     charityName: parsed.charity.name,
     charityEin: parsed.charity.ein,
     platesAmount: parsed.platesAmount,
@@ -157,6 +158,7 @@ function normalizeDonation(row: Record<string, unknown>): Donation {
   return {
     id: readString(row, "id") ?? "",
     userId: readString(row, "userId", "user_id") ?? "",
+    challengeId: readNullableString(row, "challengeId", "challenge_id"),
     charityName: readString(row, "charityName", "charity_name") ?? "",
     charityEin: readNullableString(row, "charityEin", "charity_ein"),
     platesAmount: readNumber(row, "platesAmount", "plates_amount") ?? 0,

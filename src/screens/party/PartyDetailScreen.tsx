@@ -1,27 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  Clipboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { Button } from "../../components/primitives/Button";
-import { Card } from "../../components/primitives/Card";
-import { Avatar } from "../../components/primitives/Avatar";
-import { AvatarStack } from "../../components/primitives/AvatarStack";
-import { Badge } from "../../components/primitives/Badge";
-import { WagerCard } from "../../components/composite/WagerCard";
-import { EmptyState } from "../../components/composite/EmptyState";
 import { usePartyStore } from "../../stores/usePartyStore";
-import { useWagerStore } from "../../stores/useWagerStore";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { colors, spacing, typography } from "../../theme";
-import { loadProfile } from "../../utils/profileStorage";
 import type { PartyStackParamList } from "../../navigation/types";
+import { ErrorBoundary } from "../../components/common/ErrorBoundary";
+import { ReportModal } from "../../components/composite/ReportModal";
+import type { ReportReason } from "../../components/composite/ReportModal";
+import { supabase } from "../../lib/supabase";
 
 export type PartyDetailScreenProps = NativeStackScreenProps<
   PartyStackParamList,
@@ -36,274 +34,251 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
     isLoading: partyLoading,
     loadParty,
     loadPartyMembers,
+    leaveParty,
+    deleteParty,
   } = usePartyStore();
-  const {
-    activeWager,
-    isLoading: wagerLoading,
-    loadActiveWagerForParty,
-  } = useWagerStore();
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { userId } = useCurrentUser();
+  const [reportVisible, setReportVisible] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-
-    async function bootstrap() {
-      const profile = await loadProfile();
-      if (!mounted) return;
-      setCurrentUserId(profile?.id ?? null);
-
-      await loadParty(partyId);
-      await loadPartyMembers(partyId);
-      await loadActiveWagerForParty(partyId);
-    }
-
-    void bootstrap();
-    return () => {
-      mounted = false;
-    };
-  }, [partyId, loadParty, loadPartyMembers, loadActiveWagerForParty]);
+    void loadParty(partyId);
+    void loadPartyMembers(partyId);
+  }, [partyId, loadParty, loadPartyMembers]);
 
   const isHost = currentPartyMembers.some(
-    (member) => member.userId === currentUserId && member.role === "host",
+    (m) => m.userId === userId && m.role === "host"
   );
 
-  const memberNames = currentPartyMembers.map((member) => member.displayName || "Unknown");
+  const handleCopyCode = useCallback(() => {
+    if (currentParty?.inviteCode) {
+      Clipboard.setString(currentParty.inviteCode);
+      Alert.alert("Copied", "Invite code copied to clipboard.");
+    }
+  }, [currentParty?.inviteCode]);
 
-  const roleBadge = isHost ? <Badge label="Host" variant="warning" /> : null;
+  const handleLeave = useCallback(() => {
+    if (!userId) return;
+    Alert.alert(
+      "Leave Party",
+      "Are you sure you want to leave this party?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await leaveParty(partyId, userId);
+              navigation.navigate("PartyList");
+            } catch (err) {
+              Alert.alert("Error", err instanceof Error ? err.message : "Failed to leave party.");
+            }
+          },
+        },
+      ]
+    );
+  }, [userId, partyId, leaveParty, navigation]);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      "Delete Party",
+      "This cannot be undone. All members will be removed.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteParty(partyId);
+              navigation.navigate("PartyList");
+            } catch (err) {
+              Alert.alert("Error", err instanceof Error ? err.message : "Failed to delete party.");
+            }
+          },
+        },
+      ]
+    );
+  }, [partyId, deleteParty, navigation]);
+
+  const handleReport = useCallback(async (reason: ReportReason, description: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    await supabase.from("reports").insert({
+      reporter_id: session.user.id,
+      target_type: "party",
+      target_id: partyId,
+      reason,
+      description: description || null,
+    });
+    setReportVisible(false);
+    Alert.alert("Reported", "Thank you. We will review this report.");
+  }, [partyId]);
 
   if (partyLoading && !currentParty) {
     return (
-      <SafeAreaView style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={colors.glaze[600]} />
-      </SafeAreaView>
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator color={colors.glaze[500]} />
+      </View>
     );
   }
 
   if (!currentParty) {
     return (
-      <SafeAreaView style={styles.container}>
-        <EmptyState
-          icon="🔍"
-          title="Party not found"
-          message="This party may have been deleted or archived."
-          actionLabel="Back to Parties"
-          onAction={() => navigation.goBack()}
-        />
-      </SafeAreaView>
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.emptyText}>Party not found.</Text>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>Go Back</Text>
+        </Pressable>
+      </View>
     );
   }
 
+  // Build leaderboard from currentPartyMembers
+  const leaderboard = currentPartyMembers
+    .map((member) => ({
+      userId: member.userId,
+      displayName: member.displayName || "Unknown",
+      platesWon: member.totalWins * (currentParty?.defaultStakePlates ?? 1),
+    }))
+    .sort((a, b) => b.platesWon - a.platesWon);
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{currentParty.name}</Text>
-          <View style={styles.headerBadges}>
-            {roleBadge}
-            <Badge label={currentParty.inviteCode} variant="info" />
+    <ErrorBoundary>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <View style={styles.header}>
+            <Text style={styles.partyName}>{currentParty.name}</Text>
+            {currentParty.description ? (
+              <Text style={styles.partyDesc}>{currentParty.description}</Text>
+            ) : null}
+            <View style={styles.codeRow}>
+              <Text style={styles.codeLabel}>Code: {currentParty.inviteCode}</Text>
+              <Pressable onPress={handleCopyCode} style={styles.copyBtn}>
+                <Text style={styles.copyBtnText}>Copy</Text>
+              </Pressable>
+            </View>
+            {isHost && <Text style={styles.badge}>Host</Text>}
           </View>
-        </View>
-        <Text style={styles.charity}>❤️ {currentParty.charityOrgName}</Text>
 
-        <View style={styles.statsRow}>
-          <Card variant="default" padding={3} style={styles.statCard}>
-            <Text style={styles.statValue}>{currentPartyMembers.length}</Text>
-            <Text style={styles.statLabel}>Members</Text>
-          </Card>
-          <Card variant="default" padding={3} style={styles.statCard}>
-            <Text style={styles.statValue}>🍽 {currentParty.defaultStakePlates}</Text>
-            <Text style={styles.statLabel}>Default stake</Text>
-          </Card>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Members</Text>
-          <AvatarStack names={memberNames} max={4} size="sm" />
-        </View>
-        <Card variant="default" padding={3} style={styles.membersCard}>
-          {currentPartyMembers.map((member) => (
-            <Pressable
-              key={member.userId}
-              onPress={() =>
-                navigation.navigate("MemberProfile", {
-                  partyId,
-                  userId: member.userId,
-                })
-              }
-              style={styles.memberRow}
-            >
-              <Avatar
-                name={member.displayName || "Unknown"}
-                colorSeed={member.avatarColor || member.displayName}
-                size="md"
-              />
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>
-                  {member.displayName || "Unknown"}
-                  {member.userId === currentUserId ? " (You)" : ""}
-                </Text>
-                <Text style={styles.memberRole}>{member.role}</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Members ({currentPartyMembers.length})</Text>
+            {currentPartyMembers.map((member) => (
+              <View key={member.id} style={styles.memberRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {(member.displayName || "?").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>
+                    {member.displayName || "Unknown"}
+                    {member.userId === userId ? " (You)" : ""}
+                  </Text>
+                  <Text style={styles.memberRole}>{member.role}</Text>
+                </View>
+                <Text style={styles.memberStats}>🍽 {member.plateBalance}</Text>
               </View>
-              <Text style={styles.memberBalance}>🍽 {member.plateBalance}</Text>
-            </Pressable>
-          ))}
-        </Card>
+            ))}
+          </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Active Wager</Text>
-        </View>
-        {wagerLoading && !activeWager ? (
-          <ActivityIndicator color={colors.glaze[600]} />
-        ) : activeWager ? (
-          <WagerCard
-            wager={activeWager.wager}
-            participantNames={memberNames}
-            onPress={() =>
-              navigation.navigate("WagerDetail", {
-                wagerId: activeWager.wager.id,
-                partyId,
-              })
-            }
-          />
-        ) : (
-          <Card variant="outlined" padding={4} style={styles.emptyWager}>
-            <Text style={styles.emptyWagerText}>No active wager right now.</Text>
-            <Button
-              title="Create Wager"
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Leaderboard</Text>
+            {leaderboard.length === 0 ? (
+              <Text style={styles.emptyText}>No wins yet. Start playing!</Text>
+            ) : (
+              leaderboard.slice(0, 10).map((entry, index) => (
+                <View key={entry.userId} style={styles.leaderRow}>
+                  <Text style={styles.leaderRank}>#{index + 1}</Text>
+                  <Text style={styles.leaderName}>{entry.displayName}</Text>
+                  <Text style={styles.leaderScore}>{entry.platesWon} plates</Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.actions}>
+            <Pressable
               onPress={() => navigation.navigate("CreateWager", { partyId })}
-            />
-          </Card>
-        )}
+              style={styles.actionBtn}
+            >
+              <Text style={styles.actionBtnText}>Create Challenge</Text>
+            </Pressable>
 
-        <View style={styles.actions}>
-          <Button
-            title="Create Wager"
-            onPress={() => navigation.navigate("CreateWager", { partyId })}
-          />
-          <Button
-            title="Leaderboard"
-            variant="secondary"
-            onPress={() => navigation.navigate("Leaderboard", { partyId })}
-          />
-          <Button
-            title="Charity Pool"
-            variant="secondary"
-            onPress={() => navigation.navigate("CharityPool", { partyId })}
-          />
-          <Button
-            title="Party Settings"
-            variant="ghost"
-            onPress={() => navigation.navigate("PartySettings", { partyId })}
-          />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+            <Pressable onPress={() => setReportVisible(true)} style={styles.actionBtnSecondary}>
+              <Text style={styles.actionBtnSecondaryText}>Report Party</Text>
+            </Pressable>
+
+            {!isHost && (
+              <Pressable onPress={handleLeave} style={styles.actionBtnDanger}>
+                <Text style={styles.actionBtnDangerText}>Leave Party</Text>
+              </Pressable>
+            )}
+
+            {isHost && (
+              <Pressable onPress={handleDelete} style={styles.actionBtnDanger}>
+                <Text style={styles.actionBtnDangerText}>Delete Party</Text>
+              </Pressable>
+            )}
+          </View>
+        </ScrollView>
+
+        <ReportModal
+          visible={reportVisible}
+          targetType="party"
+          targetId={partyId}
+          onSubmit={handleReport}
+          onDismiss={() => setReportVisible(false)}
+        />
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.linen[100],
-    flex: 1,
-  },
-  centered: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scroll: {
-    padding: spacing[6],
-  },
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: spacing[2],
-  },
-  headerBadges: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[2],
-  },
-  title: {
-    color: colors.ink[900],
-    flex: 1,
-    fontSize: typography.sizes["2xl"],
-    fontWeight: typography.weights.bold,
-    marginRight: spacing[3],
-  },
-  charity: {
-    color: colors.ash[600],
-    fontSize: typography.sizes.sm,
-    marginBottom: spacing[4],
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: spacing[3],
-    marginBottom: spacing[5],
-  },
-  statCard: {
-    alignItems: "center",
-    flex: 1,
-  },
-  statValue: {
-    color: colors.ink[900],
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-  },
-  statLabel: {
-    color: colors.ash[500],
+  container: { flex: 1, backgroundColor: colors.ink[900] },
+  center: { justifyContent: "center", alignItems: "center" },
+  scroll: { padding: spacing[5], paddingBottom: spacing[10] },
+  header: { marginBottom: spacing[6] },
+  partyName: { fontSize: typography.sizes["3xl"], fontWeight: typography.weights.bold, color: colors.white },
+  partyDesc: { fontSize: typography.sizes.base, color: colors.ash[400], marginTop: spacing[2] },
+  codeRow: { flexDirection: "row", alignItems: "center", gap: spacing[3], marginTop: spacing[3] },
+  codeLabel: { fontSize: typography.sizes.sm, color: colors.ash[300], fontFamily: typography.fontFamily.mono },
+  copyBtn: { backgroundColor: colors.ink[800], paddingHorizontal: spacing[3], paddingVertical: spacing[1], borderRadius: 8 },
+  copyBtnText: { color: colors.glaze[500], fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },
+  badge: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.glaze[600],
+    color: colors.white,
     fontSize: typography.sizes.xs,
-    marginTop: spacing[1],
-  },
-  sectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: spacing[3],
-    marginTop: spacing[4],
-  },
-  sectionTitle: {
-    color: colors.ink[900],
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  membersCard: {
-    gap: spacing[3],
-  },
-  memberRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing[3],
-  },
-  memberInfo: {
-    flex: 1,
-  },
-  memberName: {
-    color: colors.ink[900],
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
-  memberRole: {
-    color: colors.ash[500],
-    fontSize: typography.sizes.xs,
-    textTransform: "capitalize",
-  },
-  memberBalance: {
-    color: colors.ink[800],
-    fontSize: typography.sizes.base,
     fontWeight: typography.weights.bold,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: 6,
+    marginTop: spacing[2],
+    overflow: "hidden",
   },
-  emptyWager: {
-    alignItems: "center",
-  },
-  emptyWagerText: {
-    color: colors.ash[600],
-    fontSize: typography.sizes.base,
-    marginBottom: spacing[3],
-    textAlign: "center",
-  },
-  actions: {
-    gap: spacing[3],
-    marginTop: spacing[6],
-  },
+  section: { marginBottom: spacing[6] },
+  sectionTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.white, marginBottom: spacing[3] },
+  memberRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing[2], gap: spacing[3] },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.glaze[600], justifyContent: "center", alignItems: "center" },
+  avatarText: { color: colors.white, fontWeight: typography.weights.bold, fontSize: typography.sizes.sm },
+  memberInfo: { flex: 1 },
+  memberName: { fontSize: typography.sizes.base, color: colors.white, fontWeight: typography.weights.medium },
+  memberRole: { fontSize: typography.sizes.xs, color: colors.ash[500], textTransform: "capitalize" },
+  memberStats: { fontSize: typography.sizes.sm, color: colors.ash[400] },
+  leaderRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing[2], borderBottomWidth: 1, borderBottomColor: colors.ink[700] },
+  leaderRank: { width: 32, fontSize: typography.sizes.sm, color: colors.glaze[500], fontWeight: typography.weights.bold },
+  leaderName: { flex: 1, fontSize: typography.sizes.base, color: colors.white },
+  leaderScore: { fontSize: typography.sizes.sm, color: colors.ash[400] },
+  emptyText: { color: colors.ash[500], fontSize: typography.sizes.base, textAlign: "center", marginVertical: spacing[4] },
+  actions: { gap: spacing[3], marginTop: spacing[4] },
+  actionBtn: { backgroundColor: colors.glaze[600], paddingVertical: spacing[4], borderRadius: 12, alignItems: "center" },
+  actionBtnText: { color: colors.white, fontSize: typography.sizes.md, fontWeight: typography.weights.bold },
+  actionBtnSecondary: { backgroundColor: colors.ink[800], paddingVertical: spacing[4], borderRadius: 12, alignItems: "center", borderWidth: 1, borderColor: colors.ink[700] },
+  actionBtnSecondaryText: { color: colors.ash[300], fontSize: typography.sizes.md, fontWeight: typography.weights.semibold },
+  actionBtnDanger: { backgroundColor: colors.wine[900], paddingVertical: spacing[4], borderRadius: 12, alignItems: "center", borderWidth: 1, borderColor: colors.wine[700] },
+  actionBtnDangerText: { color: colors.wine[300], fontSize: typography.sizes.md, fontWeight: typography.weights.semibold },
+  backBtn: { marginTop: spacing[4], backgroundColor: colors.ink[800], paddingHorizontal: spacing[5], paddingVertical: spacing[3], borderRadius: 12 },
+  backBtnText: { color: colors.white, fontWeight: typography.weights.semibold },
 });

@@ -25,12 +25,20 @@ export const users = pgTable(
     lifetimePurchasedPlates: bigint("lifetime_purchased_plates", { mode: "number" }).notNull().default(0),
     deviceId: text("device_id"),
     avatarUrl: text("avatar_url"),
+    ageVerified: boolean("age_verified").default(false),
+    gdprConsent: boolean("gdpr_consent"),
+    pushToken: text("push_token"),
+    referredBy: uuid("referred_by"),
+    referralCode: text("referral_code").unique(),
+    bio: text("bio"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("users_username_idx").on(table.username),
+    index("users_referral_code_idx").on(table.referralCode),
+    index("users_referred_by_idx").on(table.referredBy),
     pgPolicy("Users can view their own profile", {
       for: "select",
       to: "authenticated",
@@ -102,9 +110,9 @@ export const parties = pgTable(
       to: "authenticated",
       using: sql`
         EXISTS (
-          SELECT 1 FROM party_members 
-          WHERE party_members.party_id = ${table.id} 
-          AND party_members.user_id = auth.uid() 
+          SELECT 1 FROM party_members
+          WHERE party_members.party_id = ${table.id}
+          AND party_members.user_id = auth.uid()
           AND party_members.deleted_at IS NULL
         ) OR ${table.hostId} = auth.uid()
       `,
@@ -159,14 +167,21 @@ export const challenges = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     creatorId: uuid("creator_id").notNull().references(() => users.id),
+    partyId: uuid("party_id").references(() => parties.id),
     title: text("title").notNull(),
     description: text("description"),
-    type: text("type").notNull().default("public"), // public, private, personal
+    type: text("type").notNull().default("public"),
     stakeAmount: bigint("stake_amount", { mode: "number" }).notNull().default(0),
     rewardAmount: bigint("reward_amount", { mode: "number" }).notNull().default(0),
-    status: text("status").notNull().default("open"), // open, locked, completed, void
+    status: text("status").notNull().default("open"),
+    oracleType: text("oracle_type").notNull().default("manual"),
+    winnerUserId: uuid("winner_user_id").references(() => users.id),
+    charityAmount: bigint("charity_amount", { mode: "number" }).default(0),
+    totalPot: bigint("total_pot", { mode: "number" }).default(0),
+    category: text("category").default("trivia"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     proofRequired: boolean("proof_required").notNull().default(true),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -174,15 +189,18 @@ export const challenges = pgTable(
   (table) => [
     index("challenges_creator_id_idx").on(table.creatorId),
     index("challenges_status_idx").on(table.status),
-    pgPolicy("Anyone can view open challenges", {
+    index("challenges_party_id_idx").on(table.partyId),
+    index("challenges_party_status_idx").on(table.partyId, table.status),
+    index("challenges_winner_idx").on(table.winnerUserId),
+    pgPolicy("Party members can view party challenges", {
       for: "select",
       to: "authenticated",
-      using: sql`${table.status} = 'open' AND ${table.deletedAt} IS NULL`,
-    }),
-    pgPolicy("Creators can view their own challenges", {
-      for: "select",
-      to: "authenticated",
-      using: sql`${table.creatorId} = auth.uid() AND ${table.deletedAt} IS NULL`,
+      using: sql`${table.partyId} IS NULL OR EXISTS (
+        SELECT 1 FROM party_members
+        WHERE party_members.party_id = ${table.partyId}
+        AND party_members.user_id = auth.uid()
+        AND party_members.deleted_at IS NULL
+      ) OR ${table.creatorId} = auth.uid()`,
     }),
     pgPolicy("Authenticated users can create challenges", {
       for: "insert",
@@ -198,6 +216,46 @@ export const challenges = pgTable(
   ]
 );
 
+// Challenge options (multiple choice answers)
+export const challengeOptions = pgTable(
+  "challenge_options",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    challengeId: uuid("challenge_id").notNull().references(() => challenges.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isCorrect: boolean("is_correct").default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("challenge_options_challenge_id_idx").on(table.challengeId),
+    pgPolicy("Anyone can view challenge options", {
+      for: "select",
+      to: "authenticated",
+      using: sql`EXISTS (
+        SELECT 1 FROM challenges
+        WHERE challenges.id = ${table.challengeId}
+        AND (challenges.creatorId = auth.uid() OR
+        EXISTS (
+          SELECT 1 FROM party_members
+          WHERE party_members.party_id = challenges.party_id
+          AND party_members.user_id = auth.uid()
+          AND party_members.deleted_at IS NULL
+        ))
+      )`,
+    }),
+    pgPolicy("Creators can insert challenge options", {
+      for: "insert",
+      to: "authenticated",
+      withCheck: sql`EXISTS (
+        SELECT 1 FROM challenges
+        WHERE challenges.id = ${table.challengeId}
+        AND challenges.creator_id = auth.uid()
+      )`,
+    }),
+  ]
+);
+
 // Challenge entries (was bets)
 export const challengeEntries = pgTable(
   "challenge_entries",
@@ -206,7 +264,10 @@ export const challengeEntries = pgTable(
     challengeId: uuid("challenge_id").notNull().references(() => challenges.id),
     userId: uuid("user_id").notNull().references(() => users.id),
     stakeAmount: bigint("stake_amount", { mode: "number" }).notNull().default(0),
-    status: text("status").notNull().default("pending"), // pending, won, lost, void
+    chosenOption: uuid("chosen_option").references(() => challengeOptions.id),
+    gameScore: integer("game_score"),
+    gameSessionId: uuid("game_session_id").references(() => gameSessions.id),
+    status: text("status").notNull().default("pending"),
     proofUrl: text("proof_url"),
     proofSubmittedAt: timestamp("proof_submitted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -215,6 +276,28 @@ export const challengeEntries = pgTable(
   (table) => [
     uniqueIndex("challenge_entries_unique_idx").on(table.challengeId, table.userId),
     index("challenge_entries_user_id_idx").on(table.userId),
+    index("challenge_entries_option_idx").on(table.chosenOption),
+    index("challenge_entries_game_session_idx").on(table.gameSessionId),
+    pgPolicy("Users can view challenge entries they participate in", {
+      for: "select",
+      to: "authenticated",
+      using: sql`${table.userId} = auth.uid() OR EXISTS (
+        SELECT 1 FROM challenges
+        WHERE challenges.id = ${table.challengeId}
+        AND challenges.creator_id = auth.uid()
+      ) OR EXISTS (
+        SELECT 1 FROM challenges c
+        JOIN party_members pm ON pm.party_id = c.party_id
+        WHERE c.id = ${table.challengeId}
+        AND pm.user_id = auth.uid()
+        AND pm.deleted_at IS NULL
+      )`,
+    }),
+    pgPolicy("Users can create their own entries", {
+      for: "insert",
+      to: "authenticated",
+      withCheck: sql`${table.userId} = auth.uid()`,
+    }),
   ]
 );
 
@@ -227,7 +310,7 @@ export const predictions = pgTable(
     partyId: uuid("party_id").references(() => parties.id),
     title: text("title").notNull(),
     description: text("description"),
-    status: text("status").notNull().default("open"), // open, locked, resolved, void
+    status: text("status").notNull().default("open"),
     resolvedOutcome: text("resolved_outcome"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -264,7 +347,7 @@ export const predictionEntries = pgTable(
     optionId: uuid("option_id").notNull().references(() => predictionOptions.id),
     userId: uuid("user_id").notNull().references(() => users.id),
     stakeAmount: bigint("stake_amount", { mode: "number" }).notNull().default(0),
-    status: text("status").notNull().default("active"), // active, won, lost, void
+    status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -373,11 +456,12 @@ export const gameSessions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull().references(() => users.id),
+    challengeId: uuid("challenge_id").references(() => challenges.id),
     gameType: text("game_type").notNull(),
     score: integer("score").notNull().default(0),
     answers: jsonb("answers").default([]),
     timeTakenMs: integer("time_taken_ms"),
-    status: text("status").notNull().default("playing"), // playing, completed, flagged
+    status: text("status").notNull().default("playing"),
     flaggedReason: text("flagged_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -385,6 +469,7 @@ export const gameSessions = pgTable(
   (table) => [
     index("game_sessions_user_id_idx").on(table.userId),
     index("game_sessions_status_idx").on(table.status),
+    index("game_sessions_challenge_idx").on(table.challengeId),
   ]
 );
 
@@ -415,7 +500,7 @@ export const iapReceipts = pgTable(
     transactionId: text("transaction_id").notNull().unique(),
     receiptData: text("receipt_data"),
     platesAdded: bigint("plates_added", { mode: "number" }).notNull(),
-    status: text("status").notNull().default("pending"), // pending, validated, failed
+    status: text("status").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     validatedAt: timestamp("validated_at", { withTimezone: true }),
   },
@@ -424,7 +509,6 @@ export const iapReceipts = pgTable(
     index("iap_receipts_transaction_id_idx").on(table.transactionId),
   ]
 );
-
 
 // Goals (user personal challenges)
 export const goals = pgTable(
@@ -460,13 +544,46 @@ export const donations = pgTable(
     usdValue: integer("usd_value").notNull(),
     status: text("status").notNull().default("pending"),
     receiptUrl: text("receipt_url"),
+    challengeId: uuid("challenge_id").references(() => challenges.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("donations_user_id_idx").on(table.userId),
+    index("donations_challenge_idx").on(table.challengeId),
   ]
 );
 
+// Reports (user reports for spam/inappropriate/cheating)
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id").notNull().references(() => users.id),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    reason: text("reason").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("open"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id),
+  },
+  (table) => [
+    index("reports_target_idx").on(table.targetType, table.targetId),
+    index("reports_reporter_idx").on(table.reporterId),
+    index("reports_status_idx").on(table.status),
+    pgPolicy("Users can create reports", {
+      for: "insert",
+      to: "authenticated",
+      withCheck: sql`${table.reporterId} = auth.uid()`,
+    }),
+    pgPolicy("Users can view their own reports", {
+      for: "select",
+      to: "authenticated",
+      using: sql`${table.reporterId} = auth.uid()`,
+    }),
+  ]
+);
 
 export type Uuid = string;
 export type User = typeof users.$inferSelect & {
@@ -495,6 +612,7 @@ export type PartyMember = typeof partyMembers.$inferSelect & {
   avatarColor?: string;
 };
 export type Challenge = typeof challenges.$inferSelect;
+export type ChallengeOption = typeof challengeOptions.$inferSelect;
 export type ChallengeEntry = typeof challengeEntries.$inferSelect;
 export type Prediction = typeof predictions.$inferSelect;
 export type PredictionOption = typeof predictionOptions.$inferSelect;
@@ -508,6 +626,7 @@ export type SyncOutboxEntry = typeof syncOutbox.$inferSelect;
 export type IapReceipt = typeof iapReceipts.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type Donation = typeof donations.$inferSelect;
+export type Report = typeof reports.$inferSelect;
 
 export const schema = {
   users,
@@ -516,6 +635,7 @@ export const schema = {
   partyMembers,
   challenges,
   challengeEntries,
+  challengeOptions,
   predictions,
   predictionOptions,
   predictionEntries,
@@ -528,6 +648,7 @@ export const schema = {
   iapReceipts,
   goals,
   donations,
+  reports,
 };
 
 // Auto-generated helpers

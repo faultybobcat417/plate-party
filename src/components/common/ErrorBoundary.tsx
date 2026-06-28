@@ -24,7 +24,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[ErrorBoundary]", error, errorInfo);
+    try {
+      const { captureException } = require("../../lib/sentry");
+      captureException(error, { componentStack: errorInfo.componentStack });
+    } catch {
+      // Sentry not available
+    }
   }
 
   handleReset = () => {
@@ -45,12 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <Text style={styles.message}>
             {this.state.error?.message ?? "An unexpected error occurred"}
           </Text>
-          <Pressable
-            onPress={this.handleReset}
-            style={styles.button}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading the screen"
-          >
+          <Pressable onPress={this.handleReset} style={styles.button}>
             <Text style={styles.buttonText}>Try Again</Text>
           </Pressable>
         </View>
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: spacing[6],
-    backgroundColor: colors.neutral[50],
+    backgroundColor: colors.ink[900],
   },
   emoji: {
     fontSize: 48,
@@ -76,24 +76,24 @@ const styles = StyleSheet.create({
   title: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.bold,
-    color: colors.neutral[900],
+    color: colors.white,
     marginBottom: spacing[2],
   },
   message: {
     fontSize: typography.sizes.base,
-    color: colors.neutral[500],
+    color: colors.ash[400],
     textAlign: "center",
     marginBottom: spacing[6],
     lineHeight: typography.lineHeights.base,
   },
   button: {
-    backgroundColor: colors.primary.base,
+    backgroundColor: colors.glaze[600],
     paddingHorizontal: spacing[6],
     paddingVertical: spacing[3],
     borderRadius: 99,
   },
   buttonText: {
-    color: colors.neutral[0],
+    color: colors.white,
     fontWeight: typography.weights.bold,
     fontSize: typography.sizes.md,
   },

@@ -1,181 +1,190 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
+  FlatList,
+  Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { PartyDiscoveryCard } from "../../components/composite/PartyDiscoveryCard";
-import { PartySearchBar } from "../../components/composite/PartySearchBar";
-import { Button } from "../../components/primitives/Button";
-import { usePartyDiscoveryStore } from "../../stores/usePartyDiscoveryStore";
+import { usePartyStore } from "../../stores/usePartyStore";
 import { colors, spacing, typography } from "../../theme";
 import type { PartyStackParamList } from "../../navigation/types";
+import { ErrorBoundary } from "../../components/common/ErrorBoundary";
+import { supabase } from "../../lib/supabase";
+import type { Party } from "../../db/schema";
 
 export type PartyDiscoveryScreenProps = NativeStackScreenProps<
   PartyStackParamList,
   "PartyDiscovery"
 >;
 
-export function PartyDiscoveryScreen() {
-  const {
-    parties,
-    currentIndex,
-    isLoading,
-    error,
-    searchQuery,
-    filters,
-    swipeHistory,
-    loadParties,
-    setSearchQuery,
-    setFilters,
-    swipeLeft,
-    swipeRight,
-    superRequest,
-    clearError,
-  } = usePartyDiscoveryStore();
+export function PartyDiscoveryScreen({ navigation }: PartyDiscoveryScreenProps) {
+  const [parties, setParties] = useState<Party[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPublicParties = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: supaError } = await supabase
+        .from("parties")
+        .select("*")
+        .eq("is_private", false)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (supaError) throw supaError;
+      const normalized = (data ?? []).map(normalizeParty);
+      setParties(normalized);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load parties");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    void loadParties();
-  }, [loadParties]);
+    void loadPublicParties();
+  }, [loadPublicParties]);
 
-  const currentParty = parties[currentIndex];
-  const hasMore = currentIndex < parties.length - 1;
-  const joinedPartyIds = swipeHistory
-    .filter((item) => item.action === "join")
-    .map((item) => item.partyId);
-  const superRequestedIds = swipeHistory
-    .filter((item) => item.action === "super")
-    .map((item) => item.partyId);
+  const filtered = parties.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const renderPartyCard = ({ item }: { item: Party }) => (
+    <Pressable
+      onPress={() => navigation.navigate("PartyDetail", { partyId: item.id })}
+      style={styles.card}
+    >
+      <Text style={styles.cardTitle}>{item.name}</Text>
+      {item.description ? (
+        <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+      ) : null}
+      <View style={styles.cardFooter}>
+        <Text style={styles.cardMeta}>🍽 {item.defaultStakePlates} stake</Text>
+        {item.charityOrgName ? (
+          <Text style={styles.cardMeta}>❤️ {item.charityOrgName}</Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <PartySearchBar
-        query={searchQuery}
-        onQueryChange={(query) => void setSearchQuery(query)}
-        filters={filters}
-        onFiltersChange={(newFilters) => void setFilters(newFilters)}
-        onSearch={() => void setSearchQuery(searchQuery)}
-      />
-
-      {isLoading && !currentParty && (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.glaze[600]} />
-          <Text style={styles.loadingText}>Finding parties...</Text>
+    <ErrorBoundary>
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Discover Parties</Text>
+          <Text style={styles.subtitle}>Join public groups and start competing</Text>
         </View>
-      )}
 
-      {error && (
-        <View style={styles.centered}>
-          <Text style={styles.errorText}>⚠️ {error}</Text>
-          <Button title="Dismiss" onPress={clearError} variant="secondary" />
-        </View>
-      )}
-
-      {!isLoading && parties.length === 0 && (
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>
-            No more parties nearby. Check back tomorrow! 🌅
-          </Text>
-        </View>
-      )}
-
-      {!isLoading && currentParty && (
-        <>
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search parties..."
+            placeholderTextColor={colors.ash[500]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            onPress={() => navigation.navigate("CreateParty")}
+            style={styles.createBtn}
           >
-            <View style={styles.counter}>
-              <Text style={styles.counterText}>
-                {currentIndex + 1} of {parties.length}
-              </Text>
-            </View>
+            <Text style={styles.createBtnText}>+ Create</Text>
+          </Pressable>
+        </View>
 
-            <View style={styles.cardWrapper}>
-              <PartyDiscoveryCard
-                party={currentParty}
-                onSkip={swipeLeft}
-                onJoin={() => void swipeRight()}
-                onSuperRequest={() => void superRequest()}
-                isJoined={joinedPartyIds.includes(currentParty.id)}
-                isSuperRequested={superRequestedIds.includes(currentParty.id)}
-              />
-            </View>
-          </ScrollView>
-
-          {hasMore && (
-            <View style={styles.hintRow}>
-              <Text style={styles.hintText}>
-                👈 Skip · 👉 Join · ⬆️ Super-Request
+        {loading && parties.length === 0 ? (
+          <ActivityIndicator color={colors.glaze[500]} style={styles.loader} />
+        ) : error ? (
+          <Text style={styles.errorText}>{error}</Text>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPartyCard}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                {searchQuery ? "No parties match your search." : "No public parties yet. Be the first to create one!"}
               </Text>
-            </View>
-          )}
-        </>
-      )}
-    </SafeAreaView>
+            }
+            refreshing={loading}
+            onRefresh={loadPublicParties}
+          />
+        )}
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 
+function normalizeParty(row: Record<string, unknown>): Party {
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? "Untitled party"),
+    description: row.description ? String(row.description) : null,
+    hostId: String(row.host_id ?? ""),
+    inviteCode: String(row.invite_code ?? ""),
+    isPrivate: Boolean(row.is_private),
+    charityPoolPlates: Number(row.charity_pool_plates ?? 0),
+    charityOrgName: row.charity_org_name ? String(row.charity_org_name) : "",
+    charityOrgUrl: row.charity_org_url ? String(row.charity_org_url) : null,
+    defaultStakePlates: Number(row.default_stake_plates ?? 1),
+    realMoneyEnabled: Boolean(row.real_money_enabled),
+    createdAt: row.created_at ? new Date(String(row.created_at)) : new Date(),
+    updatedAt: row.updated_at ? new Date(String(row.updated_at)) : new Date(),
+    deletedAt: row.deleted_at ? new Date(String(row.deleted_at)) : null,
+  };
+}
+
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.linen[100],
+  container: { flex: 1, backgroundColor: colors.ink[900] },
+  header: { paddingHorizontal: spacing[5], paddingTop: spacing[4], paddingBottom: spacing[3] },
+  title: { fontSize: typography.sizes["3xl"], fontWeight: typography.weights.bold, color: colors.white },
+  subtitle: { fontSize: typography.sizes.base, color: colors.ash[400], marginTop: spacing[1] },
+  searchRow: { flexDirection: "row", paddingHorizontal: spacing[5], gap: spacing[3], marginBottom: spacing[4] },
+  searchInput: {
     flex: 1,
+    backgroundColor: colors.ink[800],
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.ink[700],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    color: colors.white,
+    fontSize: typography.sizes.base,
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: spacing[4],
-  },
-  counter: {
-    alignItems: "center",
-    paddingVertical: spacing[2],
-  },
-  counterText: {
-    color: colors.ash[500],
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-  },
-  cardWrapper: {
-    flex: 1,
-    marginHorizontal: spacing[4],
-    minHeight: 480,
-  },
-  centered: {
-    alignItems: "center",
-    flex: 1,
+  createBtn: {
+    backgroundColor: colors.glaze[600],
+    borderRadius: 12,
+    paddingHorizontal: spacing[4],
     justifyContent: "center",
-    padding: spacing[6],
-  },
-  loadingText: {
-    color: colors.ash[600],
-    fontSize: typography.sizes.base,
-    marginTop: spacing[3],
-  },
-  errorText: {
-    color: colors.wine[500],
-    fontSize: typography.sizes.base,
-    marginBottom: spacing[3],
-    textAlign: "center",
-  },
-  emptyText: {
-    color: colors.ink[900],
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    textAlign: "center",
-  },
-  hintRow: {
     alignItems: "center",
-    paddingBottom: spacing[4],
   },
-  hintText: {
-    color: colors.ash[400],
-    fontSize: typography.sizes.xs,
+  createBtnText: { color: colors.white, fontWeight: typography.weights.bold, fontSize: typography.sizes.sm },
+  list: { paddingHorizontal: spacing[5], paddingBottom: spacing[6] },
+  card: {
+    backgroundColor: colors.ink[800],
+    borderRadius: 16,
+    padding: spacing[5],
+    marginBottom: spacing[3],
+    borderWidth: 1,
+    borderColor: colors.ink[700],
   },
+  cardTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.white },
+  cardDesc: { fontSize: typography.sizes.sm, color: colors.ash[400], marginTop: spacing[1] },
+  cardFooter: { flexDirection: "row", gap: spacing[4], marginTop: spacing[3] },
+  cardMeta: { fontSize: typography.sizes.xs, color: colors.ash[500] },
+  loader: { marginTop: spacing[10] },
+  errorText: { color: colors.wine[400], textAlign: "center", marginTop: spacing[10], fontSize: typography.sizes.base },
+  emptyText: { color: colors.ash[500], textAlign: "center", marginTop: spacing[10], fontSize: typography.sizes.base },
 });
