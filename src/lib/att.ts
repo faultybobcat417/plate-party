@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 let trackingModule: any = null;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   trackingModule = require("expo-tracking-transparency");
 } catch {
   // Not installed

@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { colors, spacing, typography } from "../../theme";
+import { captureException } from "../../lib/sentry";
 
 interface Props {
   children: ReactNode;
@@ -24,12 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    try {
-      const { captureException } = require("../../lib/sentry");
-      captureException(error, { componentStack: errorInfo.componentStack });
-    } catch {
-      // Sentry not available
-    }
+    captureException(error, { componentStack: errorInfo.componentStack ?? undefined });
   }
 
   handleReset = () => {

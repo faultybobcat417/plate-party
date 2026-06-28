@@ -20,6 +20,7 @@ import { ErrorBoundary } from "../../components/common/ErrorBoundary";
 import { ReportModal } from "../../components/composite/ReportModal";
 import type { ReportReason } from "../../components/composite/ReportModal";
 import { supabase } from "../../lib/supabase";
+import { getActiveChallenges, type ActiveChallenge } from "../../api/challenges";
 
 export type PartyDetailScreenProps = NativeStackScreenProps<
   PartyStackParamList,
@@ -39,11 +40,34 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
   } = usePartyStore();
   const { userId } = useCurrentUser();
   const [reportVisible, setReportVisible] = useState(false);
+  const [activeChallenges, setActiveChallenges] = useState<ActiveChallenge[]>([]);
+  const [challengesLoading, setChallengesLoading] = useState(true);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadParty(partyId);
     void loadPartyMembers(partyId);
   }, [partyId, loadParty, loadPartyMembers]);
+
+  useEffect(() => {
+    let alive = true;
+    setChallengesLoading(true);
+    setChallengeError(null);
+    getActiveChallenges(partyId)
+      .then((challenges) => {
+        if (alive) setActiveChallenges(challenges);
+      })
+      .catch((error) => {
+        if (alive) setChallengeError(error instanceof Error ? error.message : "Failed to load challenges.");
+      })
+      .finally(() => {
+        if (alive) setChallengesLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [partyId]);
 
   const isHost = currentPartyMembers.some(
     (m) => m.userId === userId && m.role === "host"
@@ -183,6 +207,52 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
           </View>
 
           <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Active Challenges</Text>
+              {activeChallenges.length > 3 ? <Text style={styles.seeAllText}>See All &gt;</Text> : null}
+            </View>
+
+            {challengesLoading ? (
+              <ActivityIndicator color={colors.glaze[500]} style={styles.challengeLoader} />
+            ) : challengeError ? (
+              <Text style={styles.errorText}>{challengeError}</Text>
+            ) : activeChallenges.length === 0 ? (
+              <View style={styles.emptyChallengeBox}>
+                <Text style={styles.emptyText}>No active challenges.</Text>
+                <Pressable
+                  accessibilityLabel="Create challenge"
+                  accessibilityRole="button"
+                  onPress={() => navigation.navigate("CreateChallenge", { partyId })}
+                >
+                  <Text style={styles.createOneText}>Create One</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.challengeRail}
+              >
+                {activeChallenges.slice(0, 3).map((challenge) => (
+                  <Pressable
+                    accessibilityLabel={`Open challenge ${challenge.title}`}
+                    accessibilityRole="button"
+                    key={challenge.id}
+                    onPress={() => navigation.navigate("ChallengeDetail", { challengeId: challenge.id })}
+                    style={styles.challengeCard}
+                  >
+                    <Text style={styles.challengeTitle} numberOfLines={2}>{challenge.title}</Text>
+                    <Text style={styles.challengeMeta}>Stake {challenge.stakeAmount} plates</Text>
+                    <Text style={styles.challengePot}>{challenge.totalPot || challenge.stakeAmount} pot</Text>
+                    <Text style={styles.challengeMeta}>{challenge.entryCount} entries</Text>
+                    <Text style={styles.challengeMeta}>{formatRemaining(challenge.expiresAt)}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>Leaderboard</Text>
             {leaderboard.length === 0 ? (
               <Text style={styles.emptyText}>No wins yet. Start playing!</Text>
@@ -199,7 +269,7 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
 
           <View style={styles.actions}>
             <Pressable
-              onPress={() => navigation.navigate("CreateWager", { partyId })}
+              onPress={() => navigation.navigate("CreateChallenge", { partyId })}
               style={styles.actionBtn}
             >
               <Text style={styles.actionBtnText}>Create Challenge</Text>
@@ -230,9 +300,27 @@ export function PartyDetailScreen({ navigation, route }: PartyDetailScreenProps)
           onSubmit={handleReport}
           onDismiss={() => setReportVisible(false)}
         />
+        <Pressable
+          accessibilityLabel="Create challenge"
+          accessibilityRole="button"
+          onPress={() => navigation.navigate("CreateChallenge", { partyId })}
+          style={styles.fab}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </Pressable>
       </SafeAreaView>
     </ErrorBoundary>
   );
+}
+
+function formatRemaining(value: Date | null): string {
+  if (!value) return "Open";
+  const diffMs = value.getTime() - Date.now();
+  if (diffMs <= 0) return "Expired";
+  const hours = Math.floor(diffMs / (60 * 60 * 1000));
+  if (hours >= 24) return `${Math.floor(hours / 24)}d remaining`;
+  if (hours >= 1) return `${hours}h remaining`;
+  return `${Math.max(1, Math.floor(diffMs / (60 * 1000)))}m remaining`;
 }
 
 const styles = StyleSheet.create({
@@ -259,7 +347,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   section: { marginBottom: spacing[6] },
+  sectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: spacing[3] },
   sectionTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.white, marginBottom: spacing[3] },
+  seeAllText: { color: colors.glaze[400], fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   memberRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing[2], gap: spacing[3] },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.glaze[600], justifyContent: "center", alignItems: "center" },
   avatarText: { color: colors.white, fontWeight: typography.weights.bold, fontSize: typography.sizes.sm },
@@ -272,6 +362,15 @@ const styles = StyleSheet.create({
   leaderName: { flex: 1, fontSize: typography.sizes.base, color: colors.white },
   leaderScore: { fontSize: typography.sizes.sm, color: colors.ash[400] },
   emptyText: { color: colors.ash[500], fontSize: typography.sizes.base, textAlign: "center", marginVertical: spacing[4] },
+  errorText: { color: colors.wine[400], fontSize: typography.sizes.sm, textAlign: "center", marginVertical: spacing[3] },
+  challengeLoader: { marginVertical: spacing[4] },
+  emptyChallengeBox: { alignItems: "center", backgroundColor: colors.ink[800], borderColor: colors.ink[700], borderRadius: 8, borderWidth: 1, padding: spacing[4] },
+  createOneText: { color: colors.glaze[400], fontSize: typography.sizes.sm, fontWeight: typography.weights.bold },
+  challengeRail: { gap: spacing[3], paddingRight: spacing[5] },
+  challengeCard: { backgroundColor: colors.ink[800], borderColor: colors.ink[700], borderRadius: 8, borderWidth: 1, gap: spacing[2], minHeight: 148, padding: spacing[4], width: 220 },
+  challengeTitle: { color: colors.white, fontSize: typography.sizes.base, fontWeight: typography.weights.bold, lineHeight: typography.lineHeights.base },
+  challengeMeta: { color: colors.ash[400], fontSize: typography.sizes.sm },
+  challengePot: { color: colors.gold, fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
   actions: { gap: spacing[3], marginTop: spacing[4] },
   actionBtn: { backgroundColor: colors.glaze[600], paddingVertical: spacing[4], borderRadius: 12, alignItems: "center" },
   actionBtnText: { color: colors.white, fontSize: typography.sizes.md, fontWeight: typography.weights.bold },
@@ -281,4 +380,6 @@ const styles = StyleSheet.create({
   actionBtnDangerText: { color: colors.wine[300], fontSize: typography.sizes.md, fontWeight: typography.weights.semibold },
   backBtn: { marginTop: spacing[4], backgroundColor: colors.ink[800], paddingHorizontal: spacing[5], paddingVertical: spacing[3], borderRadius: 12 },
   backBtnText: { color: colors.white, fontWeight: typography.weights.semibold },
+  fab: { alignItems: "center", backgroundColor: colors.glaze[500], borderRadius: 28, bottom: spacing[6], height: 56, justifyContent: "center", position: "absolute", right: spacing[5], width: 56 },
+  fabText: { color: colors.white, fontSize: typography.sizes["3xl"], fontWeight: typography.weights.bold, lineHeight: typography.lineHeights["3xl"] },
 });

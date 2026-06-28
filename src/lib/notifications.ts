@@ -2,7 +2,9 @@ let Notifications: any = null;
 let Device: any = null;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Notifications = require("expo-notifications");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Device = require("expo-device");
 } catch {
   // Packages not installed

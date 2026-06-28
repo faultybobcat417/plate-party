@@ -6,6 +6,11 @@ import { JoinPartyScreen } from "../screens/party/JoinPartyScreen";
 import { PartyDetailScreen } from "../screens/party/PartyDetailScreen";
 import { PartySettingsScreen } from "../screens/party/PartySettingsScreen";
 import { MemberProfileScreen } from "../screens/party/MemberProfileScreen";
+import { CreateChallengeScreen } from "../screens/challenge/CreateChallengeScreen";
+import { ChallengeDetailScreen } from "../screens/challenge/ChallengeDetailScreen";
+import { PlaceBetScreen } from "../screens/challenge/PlaceBetScreen";
+import { GameScreen } from "../screens/challenge/GameScreen";
+import { ResultsScreen } from "../screens/challenge/ResultsScreen";
 import { CreateWagerScreen } from "../screens/wager/CreateWagerScreen";
 import { WagerDetailScreen } from "../screens/wager/WagerDetailScreen";
 import { PlaceBetSheet } from "../screens/wager/PlaceBetSheet";
@@ -58,6 +63,31 @@ export function PartyStackNavigator() {
         options={{ title: "Member" }}
       />
       <Stack.Screen
+        name="CreateChallenge"
+        component={CreateChallengeScreen}
+        options={{ title: "Create Challenge", gestureEnabled: true }}
+      />
+      <Stack.Screen
+        name="ChallengeDetail"
+        component={ChallengeDetailScreen}
+        options={{ title: "Challenge", gestureEnabled: true }}
+      />
+      <Stack.Screen
+        name="PlaceBet"
+        component={PlaceBetScreen}
+        options={{ title: "Place Bet", gestureEnabled: true }}
+      />
+      <Stack.Screen
+        name="GameScreen"
+        component={GameScreen}
+        options={{ title: "Game", gestureEnabled: true }}
+      />
+      <Stack.Screen
+        name="ResultsScreen"
+        component={ResultsScreen}
+        options={{ title: "Results", gestureEnabled: true }}
+      />
+      <Stack.Screen
         name="CreateWager"
         component={CreateWagerScreen}
         options={{ title: "New Wager" }}
@@ -68,7 +98,7 @@ export function PartyStackNavigator() {
         options={{ title: "Wager" }}
       />
       <Stack.Screen
-        name="PlaceBet"
+        name="WagerPlaceBet"
         component={PlaceBetSheet}
         options={{ title: "Place Bet", presentation: "modal" }}
       />

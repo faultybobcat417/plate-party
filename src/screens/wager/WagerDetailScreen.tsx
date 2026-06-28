@@ -142,7 +142,7 @@ export function WagerDetailScreen({ route, navigation }: Props) {
               totalBets={totalBets}
               onPress={() => {
                 if (wagerData.status === "open" && !userBet) {
-                  navigation.navigate("PlaceBet", { wagerId, partyId });
+                  navigation.navigate("WagerPlaceBet", { wagerId, partyId });
                 }
               }}
             />
@@ -152,7 +152,7 @@ export function WagerDetailScreen({ route, navigation }: Props) {
         {wagerData.status === "open" && !userBet ? (
           <Button
             title="Place a Bet"
-            onPress={() => navigation.navigate("PlaceBet", { wagerId, partyId })}
+            onPress={() => navigation.navigate("WagerPlaceBet", { wagerId, partyId })}
           />
         ) : null}
 

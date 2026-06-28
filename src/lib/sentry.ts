@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 let Sentry: any = null;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Sentry = require("@sentry/react-native");
 } catch {
   // Sentry not installed

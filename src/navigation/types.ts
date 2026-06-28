@@ -42,9 +42,14 @@ export type PartyStackParamList = {
   PartyDetail: { partyId: string };
   PartySettings: { partyId: string };
   MemberProfile: { partyId: string; userId: string };
+  CreateChallenge: { partyId: string };
+  ChallengeDetail: { challengeId: string };
+  PlaceBet: { challengeId: string };
+  GameScreen: { challengeId: string };
+  ResultsScreen: { challengeId: string };
   CreateWager: { partyId: string };
   WagerDetail: { wagerId: string; partyId?: string };
-  PlaceBet: { wagerId: string; partyId?: string };
+  WagerPlaceBet: { wagerId: string; partyId?: string };
   BetConfirmed: { wagerId: string; partyId?: string };
   Reveal: { wagerId: string; partyId?: string };
   Leaderboard: { partyId: string };
